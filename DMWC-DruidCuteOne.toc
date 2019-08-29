@@ -1,0 +1,9 @@
+## Interface: 11320
+## Title: DoMeWhen Classic - DruidCuteOne
+## Author: CuteOne
+## Notes: Druid Rotation favoring Feral for DoMeWhen Classic
+## DefaultState: Disabled
+## Dependencies: DoMeWhen-Classic
+
+Settings.lua
+Rotation.lua
