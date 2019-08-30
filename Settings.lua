@@ -6,6 +6,8 @@ local UI = DMW.UI
 function Druid.Settings()
     UI.AddHeader("DPS")
     UI.AddHeader("Defensives")
+    -- Entangling Roots
+    UI.AddToggle("Entangling Roots", nil, 1)
     -- Healing Touch
     UI.AddToggle("Healing Touch", nil, 1)
     UI.AddRange("Healing Touch Percent", nil, 0, 100, 5, 50)

@@ -30,6 +30,12 @@ local function Locals()
 end
 
 local function Defensive()
+    -- Entangling Roots
+    if Setting("Entangling Roots") and Target and not Target.Facing and Target.Moving
+        and not Debuff.EntanglingRoots:Exist(Target)
+    then
+        if Spell.EntanglingRoots:Cast(Target) then return true end
+    end
     -- Healing Touch
     if Setting("Healing Touch") and HP < Setting("Healing Touch Percent") then
         if Spell.HealingTouch:Cast(Player) then return true end
@@ -58,12 +64,13 @@ local function Caster()
         if not Player.Combat then
             StartAttack()
             -- Wrath
-            if Spell.Wrath:Cast(Target) then
-                return true
+            if not Player.Moving then
+                if Spell.Wrath:Cast(Target) then return true end
             end
         end
         -- In Combat
         if Player.Combat then
+            StartAttack()
             -- Moonfire
             if not Debuff.Moonfire:Exist(Target) then
                 if Spell.Moonfire:Cast(Target) then return true end
