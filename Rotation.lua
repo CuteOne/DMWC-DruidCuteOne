@@ -4,6 +4,7 @@ local Player, Buff, Debuff, Health, HP, Power, Spell, Target, Trait, Talent, Ite
 local Rotation = DMW.Helpers.Rotation
 local Setting = DMW.Helpers.Rotation.Setting
 local LastForm = "Caster Form"
+local Shapeshifted
 
 local function Locals()
     Player = DMW.Player
@@ -28,6 +29,8 @@ local function Locals()
             MeleeAggro = true
         end
     end
+    Shapeshifted = Buff.DireBearForm:Exist(Player) or Buff.BearForm:Exist(Player) or Buff.CatForm:Exist(Player) 
+        or Buff.MoonkinForm:Exist(Player) or Buff.TravelForm:Exist(Player) or Buff.AquaticForm:Exist(Player)
 end
 
 local function CancelForm()
@@ -178,6 +181,12 @@ end
 function Druid.Rotation()
     Locals()
     if Rotation.Active() then
+        -- Cancel Form To Speak to NPCs
+        if Target and Target.Friend and not Target.Dead and not Target.Player
+            and Target.Distance < 8 and Shapeshifted
+        then
+            if CancelShapeshiftForm() then return end
+        end
         if Defensive() then return true end
         if not Buff.CatForm:Exist(Player) and not Buff.BearForm:Exist(Player) then
             if Caster() then return true end
