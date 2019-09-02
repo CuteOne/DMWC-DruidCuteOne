@@ -22,9 +22,10 @@ local function Locals()
     HUD = DMW.Settings.profile.HUD
     CDs = Player:CDs() and Target and Target.TTD > 5 and Target.Distance < 5
     Friends40Y, Friends40YC = Player:GetFriends(40)
-    Player40Y, Player40YC = Player:GetEnemies(40)
+    Enemies40Y, Enemies40YC = Player:GetEnemies(40)
+    Enemies5Y, Enemies5YC = Player:GetEnemies(5)
     MeleeAggro = false
-    for _, Unit in ipairs(Player40Y) do
+    for _, Unit in ipairs(Enemies40Y) do
         if Unit.Distance < 5 and Player.Pointer == Unit.Target then
             MeleeAggro = true
         end
@@ -106,22 +107,38 @@ local function Bear()
         -- No Combat
         if not Player.Combat then
             StartAttack()
-            -- Enrage 
+            -- Enrage
             if Player.Power < 10 and Target.Distance < 8 then
                 if Spell.Enrage:Cast(Player) then return true end
             end
+            -- Swipe
+            if #Enemies5Y >= 3 then
+                if Spell.Swipe:Cast(Target) then return true end
+            end
             -- Maul
-            if Spell.Maul:Cast(Target) then return true end
+            if not IsSpellKnown(Spell.Swipe.SpellID) or #Enemies5Y < 3 then
+                if Spell.Maul:Cast(Target) then return true end
+            end
         end
         -- In Combat
         if Player.Combat then
             StartAttack()
+            -- Enrage
+            if Player.Power < 10 and Target.Distance < 8 then
+                if Spell.Enrage:Cast(Player) then return true end
+            end
             -- Demoralizing Roar
             if not Debuff.DemoralizingRoar:Exist(Target) and Target.Distance < 10 then
                 if Spell.DemoralizingRoar:Cast(Target) then return true end
             end
+            -- Swipe
+            if #Enemies5Y >= 3 then
+                if Spell.Swipe:Cast(Target) then return true end
+            end
             -- Maul
-            if Spell.Maul:Cast(Target) then return true end
+            if not IsSpellKnown(Spell.Swipe.SpellID) or #Enemies5Y < 3 then
+                if Spell.Maul:Cast(Target) then return true end
+            end
         end
     end
 end
