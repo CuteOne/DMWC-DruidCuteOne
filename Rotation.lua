@@ -73,9 +73,11 @@ local function Defensive()
     end
     -- Mark of the Wild
     if Setting("Mark of the Wild") then
+        -- Buff Friendly Player Target
         if Target and Target.Friend and Target.Player and not Buff.MarkOfTheWild:Exist(Target) then
             if not Player.Combat then CancelForm() end
             if Spell.MarkOfTheWild:Cast(Target) then return true end
+        -- Buff Self
         elseif not Buff.MarkOfTheWild:Exist(Player) then
             if not Player.Combat then CancelForm() end
             if Spell.MarkOfTheWild:Cast(Player) then return true end
@@ -185,11 +187,38 @@ local function Caster()
             -- Shapeshift
             if not (canCast(wrathCost + bearCost) and canCast(mfCost + bearCost)) or Target.Distance < 8 then
                 if knowsCat then
-                    if Spell.CatForm:Cast(Player) then return true end
+                    if Spell.CatForm:Cast(Player) then LastForm = "Caster Form" return true end
                 end
                 if knowsBear then
-                    if Spell.BearForm:Cast(Player) then return true end
+                    if Spell.BearForm:Cast(Player) then LastForm = "Caster Form" return true end
                 end
+            end
+        end
+    end
+end
+
+local function Cat()
+    if Target and Target.ValidEnemy then
+        if not Player.Combat then
+            StartAttack()
+            -- Claw
+            if GetComboPoints("player", "target") < 5 then
+                if Spell.Claw:Cast(Target) then return true end
+            end
+            -- Rip
+            if GetComboPoints("player", "target") == 5 then
+                if Spell.Claw:Cast(Target) then return true end
+            end
+        end
+        if Player.Combat then
+            StartAttack()
+            -- Rip
+            if GetComboPoints("player", "target") == 5 then
+                if Spell.Claw:Cast(Target) then return true end
+            end
+            -- Claw
+            if GetComboPoints("player", "target") < 5 then
+                if Spell.Claw:Cast(Target) then return true end
             end
         end
     end
@@ -210,6 +239,9 @@ function Druid.Rotation()
         end
         if Buff.BearForm:Exist(Player) then
             if Bear() then return true end
+        end
+        if Buff.CatForm:Exist(Player) then
+            if Cat() then return true end
         end
     end
 end
