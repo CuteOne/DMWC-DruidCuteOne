@@ -4,6 +4,9 @@ local Druid = DMW.Rotations.DRUID
 local UI = DMW.UI
 
 function Druid.Settings()
+    UI.AddHeader("General")
+    -- Auto-Shapeshifting
+    UI.AddToggle("Auto-Shapeshifting", nil, 1)
     UI.AddHeader("DPS")
     UI.AddHeader("Defensives")
     -- Entangling Roots

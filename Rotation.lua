@@ -35,72 +35,76 @@ local function Locals()
 end
 
 local function CancelForm()
-    if Buff.CatForm:Exist(Player) then
-        LastForm = "Cat Form"
-        CancelShapeshiftForm()
-    end
-    if Buff.BearForm:Exist(Player) then
-        LastForm = "Bear Form"
-        CancelShapeshiftForm()
+    if Setting("Auto-Shapeshifting") then
+        if Buff.CatForm:Exist(Player) then
+            LastForm = "Cat Form"
+            CancelShapeshiftForm()
+        end
+        if Buff.BearForm:Exist(Player) then
+            LastForm = "Bear Form"
+            CancelShapeshiftForm()
+        end
     end
 end
 
 local function Defensive()
-    -- Return to Last Form
-    if LastForm ~= "Caster Form" then
-        if LastForm == "Bear Form" then
-            if Spell.BearForm:Cast(Player) then LastForm = "Caster Form" return end
+    if not Shapeshifted then
+        -- Return to Last Form
+        if Setting("Auto-Shapeshifting") and LastForm ~= "Caster Form" then
+            if LastForm == "Bear Form" then
+                if Spell.BearForm:Cast(Player) then LastForm = "Caster Form" return end
+            end
+            if LastForm == "Cat Form" then
+                if Spell.CatForm:Cast(Player) then LastForm = "Caster Form" return end
+            end
         end
-        if LastForm == "Cat Form" then
-            if Spell.CatForm:Cast(Player) then LastForm = "Caster Form" return end
+        -- Entangling Roots
+        if Setting("Entangling Roots") and Target and not ObjectIsFacing("target","player") and Target.Moving
+            and Target.ValidEnemy and not Debuff.EntanglingRoots:Exist(Target) and Target.Distance > 8
+            and Player.Combat and not Spell.EntanglingRoots:LastCast()
+        then
+            CancelForm()
+            if Spell.EntanglingRoots:Cast(Target) then return true end
         end
-    end
-    -- Entangling Roots
-    if Setting("Entangling Roots") and Target and not ObjectIsFacing("target","player") and Target.Moving
-        and Target.ValidEnemy and not Debuff.EntanglingRoots:Exist(Target) and Target.Distance > 8
-        and Player.Combat and not Spell.EntanglingRoots:LastCast()
-    then
-        CancelForm()
-        if Spell.EntanglingRoots:Cast(Target) then return true end
-    end
-    -- Healing Touch
-    if Setting("Healing Touch")
-        and ((not Player.Combat and HP <= Setting("Healing Touch Percent"))
-            or (Player.Combat and HP <= Setting("Healing Touch Percent") / 2))
-    then
-        CancelForm()
-        if Spell.HealingTouch:Cast(Player) then return true end
-    end
-    -- Mark of the Wild
-    if Setting("Mark of the Wild") then
-        -- Buff Friendly Player Target
-        if Target and Target.Friend and Target.Player and not Buff.MarkOfTheWild:Exist(Target) then
-            if not Player.Combat then CancelForm() end
-            if Spell.MarkOfTheWild:Cast(Target) then return true end
-        -- Buff Self
-        elseif not Buff.MarkOfTheWild:Exist(Player) then
-            if not Player.Combat then CancelForm() end
-            if Spell.MarkOfTheWild:Cast(Player) then return true end
+        -- Healing Touch
+        if Setting("Healing Touch")
+            and ((not Player.Combat and HP <= Setting("Healing Touch Percent"))
+                or (Player.Combat and HP <= Setting("Healing Touch Percent") / 2))
+        then
+            CancelForm()
+            if Spell.HealingTouch:Cast(Player) then return true end
         end
-    end
-    -- Regrowth
-    if Setting("Regrowth") and not Buff.Regrowth:Exist(Player)
-        and not Player.Combat and HP <= Setting("Regrowth Percent")
-    then
-        CancelForm()
-        if Spell.Regrowth:Cast(Player) then return true end
-    end
-    -- Rejuvenation
-    if Setting("Rejuvenation") and not Buff.Rejuvenation:Exist(Player)
-        and not Player.Combat and HP <= Setting("Rejuvenation Percent")
-    then
-        CancelForm()
-        if Spell.Rejuvenation:Cast(Player) then return true end
-    end
-    -- Thorns
-    if Setting("Thorns") and not Player.Combat and not Buff.Thorns:Exist(Player) then
-        CancelForm()
-        if Spell.Thorns:Cast(Player) then return true end
+        -- Mark of the Wild
+        if Setting("Mark of the Wild") then
+            -- Buff Friendly Player Target
+            if Target and Target.Friend and Target.Player and not Buff.MarkOfTheWild:Exist(Target) then
+                if not Player.Combat then CancelForm() end
+                if Spell.MarkOfTheWild:Cast(Target) then return true end
+            -- Buff Self
+            elseif not Buff.MarkOfTheWild:Exist(Player) then
+                if not Player.Combat then CancelForm() end
+                if Spell.MarkOfTheWild:Cast(Player) then return true end
+            end
+        end
+        -- Regrowth
+        if Setting("Regrowth") and not Buff.Regrowth:Exist(Player)
+            and not Player.Combat and HP <= Setting("Regrowth Percent")
+        then
+            CancelForm()
+            if Spell.Regrowth:Cast(Player) then return true end
+        end
+        -- Rejuvenation
+        if Setting("Rejuvenation") and not Buff.Rejuvenation:Exist(Player)
+            and not Player.Combat and HP <= Setting("Rejuvenation Percent")
+        then
+            CancelForm()
+            if Spell.Rejuvenation:Cast(Player) then return true end
+        end
+        -- Thorns
+        if Setting("Thorns") and not Player.Combat and not Buff.Thorns:Exist(Player) then
+            CancelForm()
+            if Spell.Thorns:Cast(Player) then return true end
+        end
     end
 end
 
@@ -185,7 +189,7 @@ local function Caster()
                 if Spell.Wrath:Cast(Target) then return true end
             end
             -- Shapeshift
-            if not (canCast(wrathCost + bearCost) and canCast(mfCost + bearCost)) or Target.Distance < 8 then
+            if Setting("Auto-Shapeshifting") and (not (canCast(wrathCost + bearCost) and canCast(mfCost + bearCost)) or Target.Distance < 8) then
                 if knowsCat then
                     if Spell.CatForm:Cast(Player) then LastForm = "Caster Form" return true end
                 end
@@ -228,13 +232,13 @@ function Druid.Rotation()
     Locals()
     if Rotation.Active() then
         -- Cancel Form To Speak to NPCs
-        if Target and Target.Friend and not Target.Dead and not Target.Player
+        if Setting("Auto-Shapeshifting") and Target and Target.Friend and not Target.Dead and not Target.Player
             and Target.Distance < 8 and Shapeshifted
         then
             if CancelShapeshiftForm() then return end
         end
         if Defensive() then return true end
-        if not Buff.CatForm:Exist(Player) and not Buff.BearForm:Exist(Player) then
+        if not Shapeshifted then
             if Caster() then return true end
         end
         if Buff.BearForm:Exist(Player) then
