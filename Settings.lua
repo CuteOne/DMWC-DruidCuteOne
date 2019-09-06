@@ -9,6 +9,10 @@ function Druid.Settings()
     UI.AddToggle("Auto-Shapeshifting", nil, 1)
     UI.AddHeader("DPS")
     UI.AddHeader("Defensives")
+    -- Abolish Poison
+    UI.AddToggle("Abolish Poison", nil, 1)
+    -- Cure Poison
+    UI.AddToggle("Cure Poison", nil, 1)
     -- Entangling Roots
     UI.AddToggle("Entangling Roots", nil, 1)
     -- Healing Touch
