@@ -232,6 +232,10 @@ end
 local function Cat()
     if Target and Target.ValidEnemy then
         if not Player.Combat then
+            -- Rake
+            if Spell.Rake:IsReady() and Debuff.Rake:Refresh(Target) then
+                if Spell.Rake:Cast(Target) then return true end
+            end
             -- Shred
             if Spell.Shred:IsReady() and not Facing then
                 if Spell.Shred:Cast(Target) then return true end
@@ -249,6 +253,10 @@ local function Cat()
                 if Spell.Rip:Cast(Target) then return true end
             end
             if ComboPoints < 5 then
+                -- Rake
+                if Spell.Rake:IsReady() and Debuff.Rake:Refresh(Target) then
+                    if Spell.Rake:Cast(Target) then return true end
+                end
                 -- Shred
                 if Spell.Shred:IsReady() and not Facing then
                     if Spell.Shred:Cast(Target) then return true end
