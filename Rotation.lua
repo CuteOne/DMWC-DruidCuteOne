@@ -33,7 +33,7 @@ local function Locals()
     Enemies40Y, Enemies40YC = Player:GetEnemies(40)
     Attackable40Y, Attackable40YC = Player:GetAttackable(40)
     Enemies5Y, Enemies5YC = Player:GetEnemies(5)
-    Unit5F = Player:GetEnemy(5,true)
+    Unit5F = Player:GetEnemy(5,true) or Target
     MeleeAggro = false
     for _, Unit in ipairs(Enemies40Y) do
         if Unit.Distance < 5 and Player.Pointer == Unit.Target then
@@ -194,7 +194,7 @@ local function Bear()
             if Spell.DemoralizingRoar:IsReady() and not Debuff.DemoralizingRoar:Exist(Unit5F)
                 and Unit5F.Distance < 10
             then
-                if Spell.DemoralizingRoar:Cast(Unit5F) then return true end
+                if Spell.DemoralizingRoar:Cast(Player) then return true end
             end
             -- Swipe
             if Spell.Swipe:IsReady() and #Enemies5Y >= 3 then
