@@ -7,6 +7,10 @@ function Druid.Settings()
     UI.AddHeader("General")
         -- Auto-Shapeshifting
         UI.AddToggle("Auto-Shapeshifting", nil, 1)
+        -- Powershifting
+        UI.AddToggle("Powershifting", nil, 0)
+        -- Cat Opener
+        UI.AddDropdown("Cat Opener", nil, {"Pounce", "Ravage", "Shred", "Rake"}, 1)
     UI.AddHeader("Bleeds")
         -- Rake
         UI.AddToggle("Rake", nil, 1)
@@ -35,6 +39,7 @@ function Druid.Settings()
         UI.AddRange("Healing Touch Percent", nil, 0, 100, 5, 40)
         -- Nature's Grasp
         UI.AddToggle("Nature's Grasp", nil, 1)
+        UI.AddBlank()
         -- Regrowth
         UI.AddToggle("Regrowth", nil, 1)
         UI.AddRange("Regrowth Percent", nil, 0, 100, 5, 60)
