@@ -376,7 +376,7 @@ end
 local function Cat()
     -- Prowl
     if Setting("Prowl") and not IsResting() and not Player.Combat and Spell.Prowl:IsReady()
-        and Buff.CatForm:Exist(Player) and not Buff.Prowl:Exist(Player) and DMW.Player.CombatLeft > 1
+        and Buff.CatForm:Exist(Player) and not Buff.Prowl:Exist(Player) and Player.CombatLeftTime > 1
     then
         for _, Unit in ipairs(Attackable40Y) do
             local threatRange = max((20 + (Unit.Level - Player.Level)),5)
