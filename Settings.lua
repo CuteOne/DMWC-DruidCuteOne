@@ -17,6 +17,8 @@ function Druid.Settings()
         -- Rip
         UI.AddToggle("Rip", nil, 1)
     UI.AddHeader("Buffs")
+        -- Innervate
+        UI.AddToggle("Self-Innervate", nil, 1)
         -- Mark of the Wild
         UI.AddToggle("Mark of the Wild", nil, 1)
         -- Prowl

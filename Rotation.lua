@@ -82,7 +82,9 @@ end
 
 local function CancelForm()
     if LastCancel == nil then LastCancel = GetTime() end
-    if Shapeshifted and GetTime() > LastCancel + GCD then
+    if Setting("Auto-Shapeshifting") and Shapeshifted and GetTime() > LastCancel + GCD
+        and GCDRemain == 0 and (DMW.Player.SwingMH > 0.25 or not Player.Combat)
+    then
         CancelShapeshiftForm()
         LastCancel = GetTime()
         return true
@@ -255,7 +257,7 @@ local function Defensive()
             and noShapeshiftPower and GetTime() > LastHeal + (GCD * 2)
         then
             if CancelForm() then print("Cancel Form [Healing Touch]") return end
-            if Spell.Innervate:IsReady() and Mana < ShapeshiftCost(Spell.HealingTouch) then Spell.Innervate:Cast(Player) end
+            -- if Spell.Innervate:IsReady() and Mana < ShapeshiftCost(Spell.HealingTouch) then Spell.Innervate:Cast(Player) end
             if Spell.HealingTouch:Cast(Player) then LastHeal = GetTime() + Spell.HealingTouch:CastTime() return true end
         end
         -- Regrowth
@@ -282,7 +284,7 @@ end
 local function Bear()
     if Target and Target.ValidEnemy then
         -- No Combat
-        if not Player.Combat then
+        if not Player.Combat and not Target.Player then
             StartAttack()
             -- Enrage
             if Spell.Enrage:IsReady() and Player.Power < 10 and Unit5F.Distance < 8 then
@@ -333,7 +335,7 @@ end
 local function Caster()
     if Target and Target.ValidEnemy then
         -- No Combat
-        if not Player.Combat then
+        if not Player.Combat and not Target.Player then
             StartAttack()
             -- Wrath
             if Spell.Wrath:IsReady() and not Player.Moving and not Spell.Wrath:LastCast() and Mana >= ShapeshiftCost(Spell.Wrath) then
@@ -389,7 +391,7 @@ local function Cat()
     end
     if Target and Target.ValidEnemy and Target.Distance < 5 then
         -- Stealth Opener
-        if Buff.Prowl:Exist(Player) and Target:IsBehind() then
+        if Buff.Prowl:Exist(Player) and Target:IsBehind() and not Target.Player then
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady() and TickTimeRemain > 0
                 and TickTimeRemain < 0.1 and not Buff.TigersFury:Exist(Player)
@@ -420,7 +422,7 @@ local function Cat()
             end
         end
         -- No Stealth Opener
-        if not Player.Combat then
+        if not Player.Combat and not Target.Player then
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady() and TickTimeRemain > 0
                 and TickTimeRemain < 0.1 and not Buff.TigersFury:Exist(Player)
@@ -505,13 +507,17 @@ function Druid.Rotation()
         if Extra() then return true end
         if Buffs() then return true end
         if Defensive() then return true end
+        -- Innervate
+        if Setting("Self-Innervate") and Spell.Innervate:IsReady() and Mana < ShapeshiftCost(Spell.HealingTouch) then 
+            Spell.Innervate:Cast(Player)
+        end
         -- Last Form
         if Setting("Auto-Shapeshifting") and LastForm ~= nil and (Player.Moving or Player.Combat)
             and not LastFormBuff and (not (Buff.AquaticForm:Exist(Player) or Buff.TravelForm:Exist(Player))
                 or #Enemies5Y > 0 or (Target and Target.Distance < 8))
         then
             if CancelForm() then print("Cancel Form [Last Form]") return end
-            if Spell.Innervate:IsReady() and Mana < LastForm:Cost() then Spell.Innervate:Cast(Player) end
+            -- if Spell.Innervate:IsReady() and Mana < LastForm:Cost() then Spell.Innervate:Cast(Player) end
             if LastForm:Cast(Player) then return true end
         end
         if not Shapeshifted then
