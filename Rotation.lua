@@ -18,6 +18,7 @@ local LastCancel
 local Opener
 local TickTime = DMW.Player.TickTime or GetTime()
 local TickTimeRemain = TickTime - GetTime()
+local noShapeshiftPower
 
 -- local f = CreateFrame("Frame", "KeyboardListener", UIParent)
 -- f:EnableKeyboard(true)
@@ -78,6 +79,8 @@ local function Locals()
     TickTime = DMW.Player.TickTime or GetTime()
     TickTimeRemain = TickTime - GetTime()
     -- print("GCD: "..GCDRemain..", Swing: "..DMW.Player.SwingMH..", Tick: "..TickTimeRemain)
+    noShapeshiftPower = ((not Buff.CatForm:Exist(Player) or (Buff.CatForm:Exist(Player) and Power < 30))
+        and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < 10))) or not Player.Combat
 end
 
 local function CancelForm()
@@ -116,12 +119,13 @@ end
 
 local function Powershift()
     if GCDRemain == 0 and DMW.Player.SwingMH > 0.25
-        and TickTimeRemain > 0 and TickTimeRemain < 0.25
+        and TickTimeRemain > 0.25
     then
         for i=1, GetNumShapeshiftForms() do
             _, name, active = GetShapeshiftFormInfo(i);
             if( name and active ) then
                 CancelShapeshiftForm()
+                print("Cancel Form [Powershift]")
                 CastShapeshiftForm(i)
                 return true
             end
@@ -217,8 +221,6 @@ end
 
 local function Defensive()
     if not Buff.Prowl:Exist(Player) and (not Player.Moving or not Shapeshifted) then
-        local noShapeshiftPower = ((not Buff.CatForm:Exist(Player) or (Buff.CatForm:Exist(Player) and Power < 30))
-            and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < 10))) or not Player.Combat
         -- Abolish Poison
         if Setting("Abolish Poison") and Spell.AbolishPoison:IsReady()
             and Player:Dispel(Spell.AbolishPoison) and not Buff.AbolishPoison:Exist(Player)
@@ -226,6 +228,14 @@ local function Defensive()
         then
             if CancelForm() then print("Cancel Form [Abolish Poison]") return end
             if Spell.AbolishPoison:Cast(Player) then return true end
+        end
+        -- Barkskin
+        if Setting("Barkskin") and (Spell.Barkskin:IsReady() or Shapeshifted) and Player.Combat
+            and Mana >= ShapeshiftCost(Spell.Barkskin) and HP <= Setting("Barkskin Percent")
+            and noShapeshiftPower
+        then
+            if CancelForm() then print("Cancel Form [Barkskin]") return end
+            if Spell.Barkskin:Cast(Player) then return true end
         end
         -- Cure Poison
         if Setting("Cure Poison") and (Spell.CurePoison:IsReady() and not Spell.AbolishPoison:Known())
@@ -254,10 +264,9 @@ local function Defensive()
         -- Healing Touch
         if Setting("Healing Touch") and (Spell.HealingTouch:IsReady() or Shapeshifted)
             and Mana >= ShapeshiftCost(Spell.HealingTouch) and HP <= Setting("Healing Touch Percent")
-            and noShapeshiftPower and GetTime() > LastHeal + (GCD * 2)
+            and noShapeshiftPower and not Spell.HealingTouch:LastCast()
         then
             if CancelForm() then print("Cancel Form [Healing Touch]") return end
-            -- if Spell.Innervate:IsReady() and Mana < ShapeshiftCost(Spell.HealingTouch) then Spell.Innervate:Cast(Player) end
             if Spell.HealingTouch:Cast(Player) then LastHeal = GetTime() + Spell.HealingTouch:CastTime() return true end
         end
         -- Regrowth
@@ -277,6 +286,14 @@ local function Defensive()
         then
             if CancelForm() then print("Cancel Form [Rejuvenation]") return end
             if Spell.Rejuvenation:Cast(Player) then --[[LastHeal = GetTime()]] return true end
+        end
+        -- Remove Curse
+        if Setting("Remove Curse") and (Spell.RemoveCurse:IsReady() or Shapeshifted)
+            and Player:Dispel(Spell.RemoveCurse) and Mana >= ShapeshiftCost(Spell.RemoveCurse)
+            and not Player.Combat
+        then
+            if CancelForm() then print("Cancel Form [Remove Curse]") return end
+            if Spell.RemoveCurse:Cast(Player) then return true end
         end
     end
 end
@@ -447,7 +464,7 @@ local function Cat()
             StartAttack()
             -- Powershifting
             if Setting("Powershifting") and Talent.Furor.Rank == 5 and Energy < 30
-                and Mana >= ShapeshiftCost(Spell.HealingTouch) and not Spell.CatForm:LastCast()
+                and Mana >= ShapeshiftCost(Spell.HealingTouch) + Spell.CatForm:Cost() and not Spell.CatForm:LastCast()
                 and Player:GCDRemain() == 0
             then
                 if Powershift() then return true end
@@ -517,7 +534,6 @@ function Druid.Rotation()
                 or #Enemies5Y > 0 or (Target and Target.Distance < 8))
         then
             if CancelForm() then print("Cancel Form [Last Form]") return end
-            -- if Spell.Innervate:IsReady() and Mana < LastForm:Cost() then Spell.Innervate:Cast(Player) end
             if LastForm:Cast(Player) then return true end
         end
         if not Shapeshifted then

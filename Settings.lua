@@ -9,6 +9,8 @@ function Druid.Settings()
         UI.AddToggle("Auto-Shapeshifting", nil, 1)
         -- Powershifting
         UI.AddToggle("Powershifting", nil, 0)
+        -- Prowl
+        UI.AddToggle("Prowl", nil, 1)
         -- Cat Opener
         UI.AddDropdown("Cat Opener", nil, {"Pounce", "Ravage", "Shred", "Rake"}, 1)
     UI.AddHeader("Bleeds")
@@ -20,9 +22,7 @@ function Druid.Settings()
         -- Innervate
         UI.AddToggle("Self-Innervate", nil, 1)
         -- Mark of the Wild
-        UI.AddToggle("Mark of the Wild", nil, 1)
-        -- Prowl
-        UI.AddToggle("Prowl", nil, 1)
+        UI.AddToggle("Mark of the Wild", nil, 1)        
         -- Thorns
         UI.AddToggle("Thorns", nil, 1)
         -- Tiger's Fury
@@ -32,6 +32,9 @@ function Druid.Settings()
         UI.AddToggle("Abolish Poison", nil, 1)
         -- Cure Poison
         UI.AddToggle("Cure Poison", nil, 1)
+        -- Barkskin
+        UI.AddToggle("Barkskin", nil, 1)
+        UI.AddRange("Barkskin Percent", nil, 0, 100, 5, 50)
         -- Entangling Roots
         UI.AddToggle("Entangling Roots", nil, 1)
         -- Faerie Fire
@@ -48,4 +51,6 @@ function Druid.Settings()
         -- Rejuvenation
         UI.AddToggle("Rejuvenation", nil, 1)
         UI.AddRange("Rejuvenation Percent", nil, 0, 100, 5, 80)
+        -- Remove Curse
+        UI.AddToggle("Remove Curse", nil, 1)
 end
