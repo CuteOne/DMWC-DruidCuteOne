@@ -59,13 +59,10 @@ local function Locals()
         if not Spell.DireBearForm:Known() then LastForm = Spell.BearForm else LastForm = Spell.DireBearForm end
     end
     if Player.Level > 20 and Spell.CatForm:Known() then LastForm = Spell.CatForm end
-    -- if Buff.TravelForm:Exist(Player) and IsOutdoors() then LastForm = Spell.TravelForm end
-    -- if Buff.AquaticForm:Exist(Player) and not Player.Combat then LastForm = Spell.AquaticForm end
     if LastHeal == nil then LastHeal = GetTime() end
     Opener = Setting("Cat Opener")
     TickTime = DMW.Player.TickTime or GetTime()
     TickTimeRemain = TickTime - GetTime()
-    -- print("GCD: "..GCDRemain..", Swing: "..DMW.Player.SwingMH..", Tick: "..TickTimeRemain)
     noShapeshiftPower = ((not Buff.CatForm:Exist(Player) or (Buff.CatForm:Exist(Player) and Power < 30))
         and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < 10))) or not Player.Combat
 end
@@ -75,12 +72,10 @@ local function IsReadyShapeshifted(Spell)
 end
 
 local function CancelForm()
-    if LastCancel == nil then LastCancel = GetTime() end
-    if Setting("Auto-Shapeshifting") and Shapeshifted and GetTime() > LastCancel + GCD
+    if Setting("Auto-Shapeshifting") and Shapeshifted and GetShapeshiftForm() ~= 0
         and GCDRemain == 0 and (DMW.Player.SwingMH > 0.25 or not Player.Combat)
     then
         CancelShapeshiftForm()
-        LastCancel = GetTime()
         return true
     elseif not Shapeshifted then
         return false
@@ -167,12 +162,6 @@ local function Extra()
             if CancelForm() then print("Cancel Form [Swimming]") end
             if Spell.AquaticForm:Cast(Player) then return true end
         end
-        -- -- Swimming In Combat
-        -- if Player.Combat and Buff.AquaticForm:Exist(Player) and Target and not Target.Dead and Target.Distance < 5 then
-        --     if Spell.CatForm:Known() then LastForm = Spell.CatForm end
-        --     if Spell.BearForm:Known() and not Spell.CatForm:Known() then LastForm = Spell.BearForm end
-        --     if CancelForm() then print("Cancel Form [Combat (Swimming)]") return end
-        -- end
     end
 end
 
@@ -185,8 +174,7 @@ local function Buffs()
             -- Buff Friendly Player Target
             if Target and Target.Friend and Target.Player and not Buff.MarkOfTheWild:Exist(Target) then
                 if not Player.Combat and CancelForm() then print("Cancel Form [Mark of the Wild (Friend)]") end
-                if Spell.MarkOfTheWild:Cast(Target) then --,HighestMOTW()) then
-                    -- print("Casting Mark of the Wild (Friend - Level "..Target.Level..") [Rank "..HighestMOTW().."]")
+                if Spell.MarkOfTheWild:Cast(Target) then
                     return true
                 end
             -- Buff Self
@@ -373,14 +361,6 @@ local function Caster()
             end
         end
     end
-    -- -- Shapeshift
-    -- if Setting("Auto-Shapeshifting") and LastForm ~= nil
-    --     and Target and Target.ValidEnemy and Player.Combat and LastForm:IsReady()
-    --     and Mana < ShapeshiftCost(Spell.Wrath) and Mana < ShapeshiftCost(Spell.Moonfire)
-    --     and (not IsSwimming() or not Buff.TravelForm:Exist(Player) or Target.Distance < 8)
-    -- then
-    --     if LastForm:Cast(Player) then return true end
-    -- end
 end
 
 local function Cat()
@@ -466,7 +446,7 @@ local function Cat()
             end
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady()
-                and (Power == 100) --or (ComboPoints == 5 and Spell.FerociousBite:IsReady()))
+                and (Power == 100)
                 and not Buff.TigersFury:Exist(Player)
             then
                 if Spell.TigersFury:Cast(Player) then return true end
