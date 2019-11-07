@@ -5,6 +5,8 @@ local UI = DMW.UI
 
 function Druid.Settings()
     UI.AddHeader("General")
+        -- Rotaion Debug
+        UI.AddToggle("Rotation Debug Messages", nil, 0)
         -- Auto-Shapeshifting
         UI.AddToggle("Auto-Shapeshifting", nil, 1)
         -- Powershifting
@@ -22,7 +24,10 @@ function Druid.Settings()
         -- Innervate
         UI.AddToggle("Self-Innervate", nil, 1)
         -- Mark of the Wild
-        UI.AddToggle("Mark of the Wild", nil, 1)        
+        UI.AddToggle("Mark of the Wild", nil, 1)
+        -- Omen of Clarity
+        UI.AddDropdown("Omen of Clarity", nil, {"Any", "Focus DPS", "Focus Healing", "None"}, 1)
+        UI.AddBlank()
         -- Thorns
         UI.AddToggle("Thorns", nil, 1)
         -- Tiger's Fury

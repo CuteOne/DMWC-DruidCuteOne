@@ -19,6 +19,9 @@ local Opener
 local TickTime = DMW.Player.TickTime or GetTime()
 local TickTimeRemain = TickTime - GetTime()
 local noShapeshiftPower
+local NeedsHealing
+local freeDPS
+local freeHeal
 
 local function Locals()
     Player = DMW.Player
@@ -55,16 +58,27 @@ local function Locals()
     then
         LastFormBuff = true
     end
-    if Player.Level > 10 and Spell.BearForm:Known() then
+    if Player.Level >= 10 and Spell.BearForm:Known() then
         if not Spell.DireBearForm:Known() then LastForm = Spell.BearForm else LastForm = Spell.DireBearForm end
     end
-    if Player.Level > 20 and Spell.CatForm:Known() then LastForm = Spell.CatForm end
+    if Player.Level >= 20 and Spell.CatForm:Known() then LastForm = Spell.CatForm end
     if LastHeal == nil then LastHeal = GetTime() end
     Opener = Setting("Cat Opener")
     TickTime = DMW.Player.TickTime or GetTime()
     TickTimeRemain = TickTime - GetTime()
     noShapeshiftPower = ((not Buff.CatForm:Exist(Player) or (Buff.CatForm:Exist(Player) and Power < 30))
         and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < 10))) or not Player.Combat
+    NeedsHealing = (Setting("Regrowth") and HP <= Setting("Regrowth Percent"))
+        or (Setting("Healing Touch") and HP <= Setting("Healing Touch Percent"))
+    freeDPS = Setting("Omen of Clarity") ~= 4 and Setting("Omen of Clarity") ~= 2 and Buff.Clearcasting:Exist(Player)
+        and (not NeedsHealing or Setting("Omen of Clarity") == 3)
+    freeHeal = Setting("Omen of Clarity") ~= 4 and Setting("Omen of Clarity") ~= 3 and Buff.Clearcasting:Exist(Player)
+end
+
+local function debug(message)
+    if Setting("Rotation Debug Messages") then
+        print(tostring(message))
+    end
 end
 
 local function IsReadyShapeshifted(Spell)
@@ -111,7 +125,7 @@ local function Powershift()
             _, name, active = GetShapeshiftFormInfo(i);
             if( name and active ) then
                 CancelShapeshiftForm()
-                print("Cancel Form [Powershift]")
+                debug("Cancel Form [Powershift]")
                 CastShapeshiftForm(i)
                 return true
             end
@@ -152,16 +166,23 @@ local function Extra()
         if Target and Target.Friend and not Target.ValidEnemy and not Target.Dead and not Target.Player
             and Target.Distance < 8 and Shapeshifted
         then
-            if CancelForm() then print("Cancel Form [NPC]") return true end
+            if CancelForm() then debug("Cancel Form [NPC]") return true end
         end
         -- Aquatic Form
         if not Player.Combat and IsReadyShapeshifted(Spell.AquaticForm)
             and IsSwimming("player") and not Buff.AquaticForm:Exist(Player) and not Buff.Prowl:Exist(Player)
             and Player.Moving and Mana >= ShapeshiftCost(Spell.AquaticForm) and #Enemies5Y == 0
         then
-            if CancelForm() then print("Cancel Form [Swimming]") end
-            if Spell.AquaticForm:Cast(Player) then return true end
+            if CancelForm() then debug("Cancel Form [Swimming]") end
+            if Spell.AquaticForm:Cast(Player) then debug("Cast Aquatic Form") return true end
         end
+    end
+    -- Powershifting
+    if Setting("Powershifting") and Player.Combat and Talent.Furor.Rank == 5 and Buff.CatForm:Exist(Player)
+        and Energy < 30 and Mana >= ShapeshiftCost(Spell.HealingTouch) + Spell.CatForm:Cost()
+        and not Buff.Clearcasting:Exist(Player)
+    then
+        if Powershift() then debug("Powershifted") return true end
     end
 end
 
@@ -170,29 +191,43 @@ local function Buffs()
         and not Player.Combat and (not Player.Moving or not Shapeshifted)
     then
         -- Mark of the Wild
-        if Setting("Mark of the Wild") and IsReadyShapeshifted(Spell.MarkOfTheWild) and Mana >= ShapeshiftCost(Spell.MarkOfTheWild) then
+        if Setting("Mark of the Wild") and IsReadyShapeshifted(Spell.MarkOfTheWild)
+            and Mana >= ShapeshiftCost(Spell.MarkOfTheWild) and Spell.MarkOfTheWild:TimeSinceLastCast() > GCD
+        then
             -- Buff Friendly Player Target
             if Target and Target.Friend and Target.Player and not Buff.MarkOfTheWild:Exist(Target) then
-                if not Player.Combat and CancelForm() then print("Cancel Form [Mark of the Wild (Friend)]") end
+                if not Player.Combat and CancelForm() then debug("Cancel Form [Mark of the Wild (Friend)]") end
                 if Spell.MarkOfTheWild:Cast(Target) then
+                    debug("Cast Mark of the Wild ["..Target.Name.."]")
                     return true
                 end
             -- Buff Self
             elseif Buff.MarkOfTheWild:Refresh(Player) and not Buff.Prowl:Exist(Player) then
-                if not Player.Combat and CancelForm() then print("Cancel Form [Mark of the Wild (Self)]") end
-                if Spell.MarkOfTheWild:Cast(Player) then return true end
+                if not Player.Combat and CancelForm() then debug("Cancel Form [Mark of the Wild (Self)]") end
+                if Spell.MarkOfTheWild:Cast(Player) then debug("Cast Mark of the Wild") return true end
             end
         end
         -- Thorns
-        if Setting("Thorns") and IsReadyShapeshifted(Spell.Thorns) and Mana >= ShapeshiftCost(Spell.Thorns) then
+        if Setting("Thorns") and IsReadyShapeshifted(Spell.Thorns) and Mana >= ShapeshiftCost(Spell.Thorns)
+            and Spell.Thorns:TimeSinceLastCast() > GCD
+        then
             -- Buff Friendly Player Target
             if Target and Target.Friend and Target.Player and not Buff.Thorns:Exist(Target) then
-                if not Player.Combat and CancelForm() then print("Cancel Form [Thorns (Friend)]") end
-                if Spell.Thorns:Cast(Target) then return true end
+                if not Player.Combat and CancelForm() then debug("Cancel Form [Thorns (Friend)]") end
+                if Spell.Thorns:Cast(Target) then debug("Cast Thorns ["..Target.Name.."]") return true end
             -- Buff Self
-            elseif Buff.Thorns:Refresh(Player) and not Buff.Prowl:Exist(Player) then
-                if not Player.Combat and CancelForm() then print("Cancel Form [Thorns (Self)]") end
-                if Spell.Thorns:Cast(Player) then return true end
+            elseif Buff.Thorns:Remain(Player) < 530 and not Buff.Prowl:Exist(Player) then
+                if not Player.Combat and CancelForm() then debug("Cancel Form [Thorns (Self)]") end
+                if Spell.Thorns:Cast(Player) then debug("Cast Thorns") return true end
+            end
+        end
+        -- Omen of Clarity
+        if Setting("Omen of Clarity") ~= 4 and IsReadyShapeshifted(Spell.OmenOfClarity)
+            and Mana >= ShapeshiftCost(Spell.OmenOfClarity) and Spell.OmenOfClarity:TimeSinceLastCast() > GCD
+        then
+            if Buff.OmenOfClarity:Remain(Player) < 530 and not Buff.Prowl:Exist(Player) then
+                if CancelForm() then debug("Cancel Form [Omen of Clarity]") end
+                if Spell.OmenOfClarity:Cast(Player) then debug("Cast Omen of Clarity") return true end
             end
         end
     end
@@ -203,26 +238,26 @@ local function Defensive()
         -- Abolish Poison
         if Setting("Abolish Poison") and Spell.AbolishPoison:IsReady()
             and Player:Dispel(Spell.AbolishPoison) and not Buff.AbolishPoison:Exist(Player)
-            and Mana >= ShapeshiftCost(Spell.AbolishPoison) and not Player.Combat
+            and Mana >= ShapeshiftCost(Spell.AbolishPoison) and Player.Combat
         then
-            if CancelForm() then print("Cancel Form [Abolish Poison]") return end
-            if Spell.AbolishPoison:Cast(Player) then return true end
+            if CancelForm() then debug("Cancel Form [Abolish Poison]") return end
+            if Spell.AbolishPoison:Cast(Player) then debug("Cast Abolish Poison") return true end
         end
         -- Barkskin
         if Setting("Barkskin") and IsReadyShapeshifted(Spell.Barkskin)
             and Player.Combat and Mana >= ShapeshiftCost(Spell.Barkskin) and HP <= Setting("Barkskin Percent")
             and noShapeshiftPower
         then
-            if CancelForm() then print("Cancel Form [Barkskin]") return end
-            if Spell.Barkskin:Cast(Player) then return true end
+            if CancelForm() then debug("Cancel Form [Barkskin]") return end
+            if Spell.Barkskin:Cast(Player) then debug("Cast Barkskin") return true end
         end
         -- Cure Poison
         if Setting("Cure Poison") and (Spell.CurePoison:IsReady() and not Spell.AbolishPoison:Known())
             and Player:Dispel(Spell.CurePoison) and Mana >= ShapeshiftCost(Spell.CurePoison)
             and not Player.Combat
         then
-            if CancelForm() then print("Cancel Form [Cure Poison]") return end
-            if Spell.CurePoison:Cast(Player) then return true end
+            if CancelForm() then debug("Cancel Form [Cure Poison]") return end
+            if Spell.CurePoison:Cast(Player) then debug("Cast Cure Poison") return true end
         end
         -- Entangling Roots
         if Setting("Entangling Roots") and IsReadyShapeshifted(Spell.EntanglingRoots)
@@ -230,8 +265,8 @@ local function Defensive()
             and not Debuff.EntanglingRoots:Exist(Target) and Target.Distance > 8
             and Player.Combat and not Spell.EntanglingRoots:LastCast() and Mana >= ShapeshiftCost(Spell.EntanglingRoots)
         then
-            if CancelForm() then print("Cancel Form [Entangling Roots]") return end
-            if Spell.EntanglingRoots:Cast(Target) then return true end
+            if CancelForm() then debug("Cancel Form [Entangling Roots]") return end
+            if Spell.EntanglingRoots:Cast(Target) then debug("Cast Entangling Roots") return true end
         end
         -- Faerie Fire
         if Setting("Fearie Fire") and IsReadyShapeshifted(Spell.FaerieFire)
@@ -239,40 +274,41 @@ local function Defensive()
             and not Shapeshifted and Mana >= ShapeshiftCost(Spell.FaerieFire) and Target.Distance > 8
             and noShapeshiftPower
         then
-            if Spell.FaerieFire:Cast(Target) then return true end
+            if Spell.FaerieFire:Cast(Target) then debug("Cast Faerie Fire") return true end
         end
         -- Healing Touch
         if Setting("Healing Touch") and IsReadyShapeshifted(Spell.HealingTouch)
-            and Mana >= ShapeshiftCost(Spell.HealingTouch) and HP <= Setting("Healing Touch Percent")
+            and (Mana >= ShapeshiftCost(Spell.HealingTouch) or freeHeal) and HP <= Setting("Healing Touch Percent")
             and noShapeshiftPower and not Spell.HealingTouch:LastCast()
         then
-            if CancelForm() then print("Cancel Form [Healing Touch]") return end
-            if Spell.HealingTouch:Cast(Player) then return true end
+            if CancelForm() then debug("Cancel Form [Healing Touch]") return end
+            if Spell.HealingTouch:Cast(Player) then debug("Cast Healing Touch") return true end
         end
         -- Regrowth
         if Setting("Regrowth") and IsReadyShapeshifted(Spell.Regrowth)
             and not Buff.Regrowth:Exist(Player) and HP <= Setting("Regrowth Percent")
-            and not Spell.Regrowth:LastCast() and Mana >= ShapeshiftCost(Spell.Regrowth)
+            and not Spell.Regrowth:LastCast() and (Mana >= ShapeshiftCost(Spell.Regrowth) or freeHeal)
             and noShapeshiftPower and not Spell.Regrowth:LastCast()
         then
-            if CancelForm() then print("Cancel Form [Regrowth]") return end
-            if Spell.Regrowth:Cast(Player) then return true end
+            if CancelForm() then debug("Cancel Form [Regrowth]") return end
+            if Spell.Regrowth:Cast(Player) then debug("Cast Regrowth") return true end
         end
         -- Rejuvenation
         if Setting("Rejuvenation") and IsReadyShapeshifted(Spell.Rejuvenation)
             and not Buff.Rejuvenation:Exist(Player) and HP <= Setting("Rejuvenation Percent")
             and Mana >= ShapeshiftCost(Spell.Rejuvenation) and not Player.Combat
+            and not Buff.Clearcasting:Exist(Player)
         then
-            if CancelForm() then print("Cancel Form [Rejuvenation]") return end
-            if Spell.Rejuvenation:Cast(Player) then  return true end
+            if CancelForm() then debug("Cancel Form [Rejuvenation]") return end
+            if Spell.Rejuvenation:Cast(Player) then debug("Cast Rejuvenation") return true end
         end
         -- Remove Curse
         if Setting("Remove Curse") and IsReadyShapeshifted(Spell.RemoveCurse)
             and Player:Dispel(Spell.RemoveCurse) and Mana >= ShapeshiftCost(Spell.RemoveCurse)
             and not Player.Combat
         then
-            if CancelForm() then print("Cancel Form [Remove Curse]") return end
-            if Spell.RemoveCurse:Cast(Player) then return true end
+            if CancelForm() then debug("Cancel Form [Remove Curse]") return end
+            if Spell.RemoveCurse:Cast(Player) then debug("Cast Remove Curse") return true end
         end
     end
 end
@@ -284,15 +320,15 @@ local function Bear()
             StartAttack()
             -- Enrage
             if Spell.Enrage:IsReady() and Player.Power < 10 and Unit5F.Distance < 8 then
-                if Spell.Enrage:Cast(Player) then return true end
+                if Spell.Enrage:Cast(Player) then debug("Cast Enrage [Pre-Combat]") return true end
             end
             -- Swipe
             if Spell.Swipe:IsReady() and #Enemies5Y >= 3 then
-                if Spell.Swipe:Cast(Unit5F) then return true end
+                if Spell.Swipe:Cast(Unit5F) then debug("Cast Swipe [Pre-Combat]") return true end
             end
             -- Maul
             if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3) then
-                if Spell.Maul:Cast(Unit5F) then return true end
+                if Spell.Maul:Cast(Unit5F) then debug("Cast Maul [Pre-Combat]") return true end
             end
         end
         -- In Combat
@@ -304,25 +340,25 @@ local function Bear()
             -- then
             --     -- CancelShapeshiftForm()
             --     RunMacroText("/cancelform\n/cast Bear Form")
-            --     -- if Spell.BearForm:Cast(Player) then return true end
+            --     -- if Spell.BearForm:Cast(Player) then debug("Cast Bear Form") return true end
             -- end
             -- Enrage
             if Spell.Enrage:IsReady() and Player.Power < 10 and Unit5F.Distance < 8 then
-                if Spell.Enrage:Cast(Player) then return true end
+                if Spell.Enrage:Cast(Player) then debug("Cast Enrage") return true end
             end
             -- Demoralizing Roar
             if Spell.DemoralizingRoar:IsReady() and not Debuff.DemoralizingRoar:Exist(Unit5F)
                 and Unit5F.Distance < 10
             then
-                if Spell.DemoralizingRoar:Cast(Player) then return true end
+                if Spell.DemoralizingRoar:Cast(Player) then debug("Cast Demoralizing Roar") return true end
             end
             -- Swipe
             if Spell.Swipe:IsReady() and #Enemies5Y >= 3 then
-                if Spell.Swipe:Cast(Unit5F) then return true end
+                if Spell.Swipe:Cast(Unit5F) then debug("Cast Swipe") return true end
             end
             -- Maul
             if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3) then
-                if Spell.Maul:Cast(Unit5F) then return true end
+                if Spell.Maul:Cast(Unit5F) then debug("Cast Maul") return true end
             end
         end
     end
@@ -334,12 +370,16 @@ local function Caster()
         if not Player.Combat and not Target.Player then
             StartAttack()
             -- Wrath
-            if Spell.Wrath:IsReady() and not Player.Moving and not Spell.Wrath:LastCast() and Mana >= ShapeshiftCost(Spell.Wrath) then
-                if Spell.Wrath:Cast(Target) then return true end
+            if Spell.Wrath:IsReady() and not Player.Moving and not Spell.Wrath:LastCast()
+                and Mana >= ShapeshiftCost(Spell.Wrath)
+            then
+                if Spell.Wrath:Cast(Target) then debug("Cast Wrath [Pre-Combat]") return true end
             end
             -- Moonfire
-            if Spell.Moonfire:IsReady() and (Player.Moving or Spell.Wrath:LastCast()) and Mana >= ShapeshiftCost(Spell.Moonfire) then
-                if Spell.Moonfire:Cast(Target) then return true end
+            if Spell.Moonfire:IsReady() and (Player.Moving or Spell.Wrath:LastCast())
+                and Mana >= ShapeshiftCost(Spell.Moonfire)
+            then
+                if Spell.Moonfire:Cast(Target) then debug("Cast Moonfire [Pre-Combat]") return true end
             end
         end
         -- In Combat
@@ -349,7 +389,7 @@ local function Caster()
             if Spell.Moonfire:IsReady() and not Debuff.Moonfire:Exist(Target) and (LastForm == nil
                 or (LastForm:IsReady() and Target.Distance >= 8 and Mana >= ShapeshiftCost(Spell.Moonfire)))
             then
-                if Spell.Moonfire:Cast(Target) then return true end
+                if Spell.Moonfire:Cast(Target) then debug("Cast Moonfire") return true end
             end
             -- Wrath
             if Spell.Wrath:IsReady() and not Player.Moving
@@ -357,7 +397,7 @@ local function Caster()
                 and (LastForm == nil or (LastForm:IsReady() and Target.Distance >= 8
                 and Mana >= ShapeshiftCost(Spell.Wrath)))
             then
-                if Spell.Wrath:Cast(Target) then return true end
+                if Spell.Wrath:Cast(Target) then debug("Cast Wrath") return true end
             end
         end
     end
@@ -367,13 +407,14 @@ local function Cat()
     -- Prowl
     if Setting("Prowl") and not IsResting() and not Player.Combat and Spell.Prowl:IsReady()
         and Buff.CatForm:Exist(Player) and not Buff.Prowl:Exist(Player) and Player.CombatLeftTime > 1
+        and Spell.Prowl:TimeSinceLastCast() > GCD
     then
         for _, Unit in ipairs(Attackable40Y) do
             local threatRange = max((20 + (Unit.Level - Player.Level)),5)
             if Unit.Distance < threatRange
                 and (UnitReaction("player",Unit.Pointer) < 4 or (Target and Target.ValidEnemy))
             then
-                if Spell.Prowl:Cast(Player) then return true end
+                if Spell.Prowl:Cast(Player) then debug("Cast Prowl") return true end
             end
         end
     end
@@ -383,30 +424,31 @@ local function Cat()
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady() and TickTimeRemain > 0
                 and TickTimeRemain < 0.1 and not Buff.TigersFury:Exist(Player)
+                and Spell.TigersFury:TimeSinceLastCast() > GCD
             then
-                if Spell.TigersFury:Cast(Player) then return end
+                if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury [Stealth Pre-Combat]") return end
             end
             -- Pounce
             if Opener == 1 and Spell.Pounce:IsReady() then
-                if Spell.Pounce:Cast(Target) then return true end
+                if Spell.Pounce:Cast(Target) then debug("Cast Pounce [Stealth Pre-Combat]") return true end
             end
             -- Ravage
             if (Opener == 2 or (Opener <= 1 and not Spell.Pounce:Known())) and Spell.Ravage:IsReady() then
-                if Spell.Ravage:Cast(Target) then return true end
+                if Spell.Ravage:Cast(Target) then debug("Cast Ravage [Stealth Pre-Combat]") return true end
             end
             -- Shred
             if (Opener == 3 or (Opener <= 2 and not Spell.Ravage:Known())) and Spell.Shred:IsReady() then
-                if Spell.Shred:Cast(Target) then return true end
+                if Spell.Shred:Cast(Target) then debug("Cast Shred [Stealth Pre-Combat]") return true end
             end
             -- Rake
             if Setting("Rake") and (Opener == 4 or (Opener <= 3 and not Spell.Shred:Known())) and Spell.Rake:IsReady() then
-                if Spell.Rake:Cast(Target) then return true end
+                if Spell.Rake:Cast(Target) then debug("Cast Rake [Stealth Pre-Combat]") return true end
             end
             -- Claw
             if ((Opener == 4 and not Setting("Rake")) or (Opener < 4 and not Spell.Rake:Known()))
                 and Spell.Claw:IsReady()
             then
-                if Spell.Claw:Cast(Target) then return true end
+                if Spell.Claw:Cast(Target) then debug("Cast Claw [Stealth Pre-Combat]") return true end
             end
         end
         -- No Stealth Opener
@@ -414,75 +456,71 @@ local function Cat()
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady() and TickTimeRemain > 0
                 and TickTimeRemain < 0.1 and not Buff.TigersFury:Exist(Player)
+                and Spell.TigersFury:TimeSinceLastCast() > GCD
             then
-                if Spell.TigersFury:Cast(Player) then return end
+                if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury [Pre-Combat]") return end
             end
             -- -- Rake
             -- if Setting("Rake") and Spell.Rake:IsReady() and Debuff.Rake:Refresh(Target) then
-            --     if Spell.Rake:Cast(Target) then return true end
+            --     if Spell.Rake:Cast(Target) then debug("Cast Rake [Pre-Combat]") return true end
             -- end
             -- Shred
             if Spell.Shred:IsReady() and Target:IsBehind() then
-                if Spell.Shred:Cast(Target) then return true end
+                if Spell.Shred:Cast(Target) then debug("Cast Shred [Pre-Combat]") return true end
             end
             -- Claw
             if Spell.Claw:IsReady() and not (Spell.Shred:Known() or Target:IsBehind()) then
-                if Spell.Claw:Cast(Target) then return true end
+                if Spell.Claw:Cast(Target) then debug("Cast Claw [Pre-Combat]") return true end
             end
             -- StartAttack()
         end
         if Player.Combat then
             StartAttack()
-            -- Powershifting
-            if Setting("Powershifting") and Talent.Furor.Rank == 5 and Energy < 30
-                and Mana >= ShapeshiftCost(Spell.HealingTouch) + Spell.CatForm:Cost() and not Spell.CatForm:LastCast()
-                and Player:GCDRemain() == 0
-            then
-                if Powershift() then return true end
-            end
             -- Ferocious Bite - Finish Him!
             if Spell.FerociousBite:IsReady() and Power >= 35 and FerociousBiteFinish(Unit5F) then
-                if Spell.FerociousBite:Cast(Unit5F) then return true end
+                if Spell.FerociousBite:Cast(Unit5F) then debug("Cast Ferocious Bite [Finish Him!]") return true end
             end
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady()
-                and (Power == 100)
-                and not Buff.TigersFury:Exist(Player)
+                and Power == 100 and not Buff.TigersFury:Exist(Player)
+                and Spell.TigersFury:TimeSinceLastCast() > GCD
             then
-                if Spell.TigersFury:Cast(Player) then return true end
+                if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury") return true end
             end
             -- Faerie Fire Feral
             if Spell.FaerieFireFeral:IsReady() and Target.CreatureType ~= "Elemental"
-                and not Debuff.FaerieFireFeral:Exist(Unit5F)
+                and not Debuff.FaerieFireFeral:Exist(Unit5F) and Unit5F.TTD > GCD
             then
-                if Spell.FaerieFireFeral:Cast(Unit5F) then return true end
+                if Spell.FaerieFireFeral:Cast(Unit5F) then debug("Cast Faerie Fire Feral") return true end
             end
             if ComboPoints == 5 and not FerociousBiteFinish(Unit5F) then
                 -- Ferocious Bite
                 if Spell.FerociousBite:IsReady() and Power >= 35 and Power < 60 then
-                    if Spell.FerociousBite:Cast(Unit5F) then return true end
+                    if Spell.FerociousBite:Cast(Unit5F) then debug("Cast Ferocious Bite") return true end
                 end
                 -- Rip
                 if Setting("Rip") and Spell.Rip:IsReady() and Unit5F.TTD > 6 and not Spell.FerociousBite:Known() then
-                    if Spell.Rip:Cast(Unit5F) then return true end
+                    if Spell.Rip:Cast(Unit5F) then debug("Cast Rip") return true end
                 end
             end
-            if (ComboPoints < 5 or Power >= 60) and not FerociousBiteFinish(Unit5F) then
+            if (ComboPoints < 5 or Power >= 60 or freeDPS) and not FerociousBiteFinish(Unit5F) then
                 -- Ravage
                 if Spell.Ravage:IsReady() and Buff.Prowl:Exist(Player) and Target:IsBehind() then
-                    if Spell.Ravage:Cast(Unit5F) then return true end
+                    if Spell.Ravage:Cast(Unit5F) then debug("Cast Ravage") return true end
                 end
                 -- Rake
-                if Setting("Rake") and Spell.Rake:IsReady() and Debuff.Rake:Refresh(Unit5F) and Unit5F.TTD <= 3 then
-                    if Spell.Rake:Cast(Unit5F) then return true end
+                if Setting("Rake") and Spell.Rake:IsReady() and Debuff.Rake:Refresh(Unit5F)
+                    and Unit5F.TTD <= 3 and not freeDPS
+                then
+                    if Spell.Rake:Cast(Unit5F) then debug("Cast Rake") return true end
                 end
                 -- Shred
                 if Spell.Shred:IsReady() and Unit5F:IsBehind() then
-                    if Spell.Shred:Cast(Unit5F) then return true end
+                    if Spell.Shred:Cast(Unit5F) then debug("Cast Shred") return true end
                 end
                 -- Claw
                 if Spell.Claw:IsReady() and (not Unit5F:IsBehind() or not Spell.Shred:Known()) then
-                    if Spell.Claw:Cast(Unit5F) then return true end
+                    if Spell.Claw:Cast(Unit5F) then debug("Cast Claw") return true end
                 end
             end
         end
@@ -496,16 +534,17 @@ function Druid.Rotation()
         if Buffs() then return true end
         if Defensive() then return true end
         -- Innervate
-        if Setting("Self-Innervate") and Spell.Innervate:IsReady() and Mana < ShapeshiftCost(Spell.HealingTouch) then 
+        if Setting("Self-Innervate") and Spell.Innervate:IsReady() and Mana < ShapeshiftCost(Spell.HealingTouch) then
             Spell.Innervate:Cast(Player)
+            debug("Cast Innervate")
         end
         -- Last Form
         if Setting("Auto-Shapeshifting") and LastForm ~= nil and (Player.Moving or Player.Combat)
             and not LastFormBuff and (not (Buff.AquaticForm:Exist(Player) or Buff.TravelForm:Exist(Player))
                 or #Enemies5Y > 0 or (Target and Target.Distance < 8))
         then
-            if CancelForm() then print("Cancel Form [Last Form]") return end
-            if LastForm:Cast(Player) then return true end
+            if CancelForm() then debug("Cancel Form [Last Form]") return end
+            if LastForm:Cast(Player) then debug("Cast Last Form") return true end
         end
         if not Shapeshifted then
             if Caster() then return true end
