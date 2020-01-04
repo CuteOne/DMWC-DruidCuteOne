@@ -22,6 +22,7 @@ local noShapeshiftPower
 local NeedsHealing
 local freeDPS
 local freeHeal
+local LowestHealthOption
 
 local function Locals()
     Player = DMW.Player
@@ -45,7 +46,7 @@ local function Locals()
     Unit5F = Player:GetEnemy(5,true) or Target
     ComboPoints = GetComboPoints("player","target")
     Shapeshifted = Buff.DireBearForm:Exist(Player) or Buff.BearForm:Exist(Player) or Buff.CatForm:Exist(Player)
-        or Buff.MoonkinForm:Exist(Player) or Buff.TravelForm:Exist(Player) or Buff.AquaticForm:Exist(Player)
+    or Buff.MoonkinForm:Exist(Player) or Buff.TravelForm:Exist(Player) or Buff.AquaticForm:Exist(Player)
     Mana = UnitPower("player",0)
     Energy = UnitPower("player",3)
     if Buff.DireBearForm:Exist(Player) then LastForm = Spell.DireBearForm end
@@ -54,7 +55,7 @@ local function Locals()
     if Buff.MoonkinForm:Exist(Player) then LastForm = Spell.MoonkinForm end
     LastFormBuff = false
     if Buff.DireBearForm:Exist(Player) or Buff.BearForm:Exist(Player)
-        or Buff.CatForm:Exist(Player) or Buff.MoonkinForm:Exist(Player)
+    or Buff.CatForm:Exist(Player) or Buff.MoonkinForm:Exist(Player)
     then
         LastFormBuff = true
     end
@@ -67,12 +68,20 @@ local function Locals()
     TickTime = DMW.Player.TickTime or GetTime()
     TickTimeRemain = TickTime - GetTime()
     noShapeshiftPower = ((not Buff.CatForm:Exist(Player) or (Buff.CatForm:Exist(Player) and Power < 30))
-        and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < 10))) or not Player.Combat
+    and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < 10))) or not Player.Combat
     NeedsHealing = (Setting("Regrowth") and HP <= Setting("Regrowth Percent"))
-        or (Setting("Healing Touch") and HP <= Setting("Healing Touch Percent"))
+    or (Setting("Healing Touch") and HP <= Setting("Healing Touch Percent"))
     freeDPS = Setting("Omen of Clarity") ~= 4 and Setting("Omen of Clarity") ~= 2 and Buff.Clearcasting:Exist(Player)
-        and (not NeedsHealing or Setting("Omen of Clarity") == 3)
+    and (not NeedsHealing or Setting("Omen of Clarity") == 3)
     freeHeal = Setting("Omen of Clarity") ~= 4 and Setting("Omen of Clarity") ~= 3 and Buff.Clearcasting:Exist(Player)
+    and (LastForm == nil or Mana >= LastForm:Cost())
+    Item.HealthPotion = Player:GetPotion("health")
+    Item.ManaPotion = Player:GetPotion("mana")
+    Item.RejuvPotion = Player:GetPotion("rejuv")
+    LowestHealthOption = (Setting("Healing Touch") and Setting("Healing Touch Percent"))
+                            or (Setting("Regrowth") and Setting("Regrowth Percent"))
+                            or (Setting("Rejuvenation") and Setting("Rejuvenation Percent"))
+                            or 25
 end
 
 local function debug(message)
@@ -179,8 +188,9 @@ local function Extra()
     end
     -- Powershifting
     if Setting("Powershifting") and Player.Combat and Talent.Furor.Rank == 5 and Buff.CatForm:Exist(Player)
-        and Energy < 30 and Mana >= ShapeshiftCost(Spell.HealingTouch) + Spell.CatForm:Cost()
-        and not Buff.Clearcasting:Exist(Player)
+        and Energy < 30 and ComboPoints < 5 and not Buff.Clearcasting:Exist(Player)
+        and ((not Player.InInstance and Mana >= ShapeshiftCost(Spell.HealingTouch) + Spell.CatForm:Cost())
+            or (Player.InInstance and Mana >= Spell.CatForm:Cost() * 2))
     then
         if Powershift() then debug("Powershifted") return true end
     end
@@ -195,14 +205,18 @@ local function Buffs()
             and Mana >= ShapeshiftCost(Spell.MarkOfTheWild) and Spell.MarkOfTheWild:TimeSinceLastCast() > GCD
         then
             -- Buff Friendly Player Target
-            if Target and Target.Friend and Target.Player and not Buff.MarkOfTheWild:Exist(Target) then
+            if Target and Target.Friend and Target.Player and not Buff.MarkOfTheWild:Exist(Target)
+                and not Buff.GiftOfTheWild:Exist(Target)
+            then
                 if not Player.Combat and CancelForm() then debug("Cancel Form [Mark of the Wild (Friend)]") end
                 if Spell.MarkOfTheWild:Cast(Target) then
                     debug("Cast Mark of the Wild ["..Target.Name.."]")
                     return true
                 end
             -- Buff Self
-            elseif Buff.MarkOfTheWild:Refresh(Player) and not Buff.Prowl:Exist(Player) then
+            elseif not Buff.GiftOfTheWild:Exist(Player) and Buff.MarkOfTheWild:Remain(Player) < 60
+                and not Buff.Prowl:Exist(Player)
+            then
                 if not Player.Combat and CancelForm() then debug("Cancel Form [Mark of the Wild (Self)]") end
                 if Spell.MarkOfTheWild:Cast(Player) then debug("Cast Mark of the Wild") return true end
             end
@@ -216,7 +230,7 @@ local function Buffs()
                 if not Player.Combat and CancelForm() then debug("Cancel Form [Thorns (Friend)]") end
                 if Spell.Thorns:Cast(Target) then debug("Cast Thorns ["..Target.Name.."]") return true end
             -- Buff Self
-            elseif Buff.Thorns:Remain(Player) < 530 and not Buff.Prowl:Exist(Player) then
+            elseif Buff.Thorns:Remain(Player) < 60 and not Buff.Prowl:Exist(Player) then
                 if not Player.Combat and CancelForm() then debug("Cancel Form [Thorns (Self)]") end
                 if Spell.Thorns:Cast(Player) then debug("Cast Thorns") return true end
             end
@@ -225,7 +239,7 @@ local function Buffs()
         if Setting("Omen of Clarity") ~= 4 and IsReadyShapeshifted(Spell.OmenOfClarity)
             and Mana >= ShapeshiftCost(Spell.OmenOfClarity) and Spell.OmenOfClarity:TimeSinceLastCast() > GCD
         then
-            if Buff.OmenOfClarity:Remain(Player) < 530 and not Buff.Prowl:Exist(Player) then
+            if Buff.OmenOfClarity:Remain(Player) < 60 and not Buff.Prowl:Exist(Player) then
                 if CancelForm() then debug("Cancel Form [Omen of Clarity]") end
                 if Spell.OmenOfClarity:Cast(Player) then debug("Cast Omen of Clarity") return true end
             end
@@ -279,7 +293,7 @@ local function Defensive()
         -- Healing Touch
         if Setting("Healing Touch") and IsReadyShapeshifted(Spell.HealingTouch)
             and (Mana >= ShapeshiftCost(Spell.HealingTouch) or freeHeal) and HP <= Setting("Healing Touch Percent")
-            and noShapeshiftPower and not Spell.HealingTouch:LastCast()
+            and noShapeshiftPower and not Spell.HealingTouch:LastCast() and not Player.InInstance
         then
             if CancelForm() then debug("Cancel Form [Healing Touch]") return end
             if Spell.HealingTouch:Cast(Player) then debug("Cast Healing Touch") return true end
@@ -288,7 +302,7 @@ local function Defensive()
         if Setting("Regrowth") and IsReadyShapeshifted(Spell.Regrowth)
             and not Buff.Regrowth:Exist(Player) and HP <= Setting("Regrowth Percent")
             and not Spell.Regrowth:LastCast() and (Mana >= ShapeshiftCost(Spell.Regrowth) or freeHeal)
-            and noShapeshiftPower and not Spell.Regrowth:LastCast()
+            and noShapeshiftPower and not Spell.Regrowth:LastCast() and not Player.InInstance
         then
             if CancelForm() then debug("Cancel Form [Regrowth]") return end
             if Spell.Regrowth:Cast(Player) then debug("Cast Regrowth") return true end
@@ -297,7 +311,7 @@ local function Defensive()
         if Setting("Rejuvenation") and IsReadyShapeshifted(Spell.Rejuvenation)
             and not Buff.Rejuvenation:Exist(Player) and HP <= Setting("Rejuvenation Percent")
             and Mana >= ShapeshiftCost(Spell.Rejuvenation) and not Player.Combat
-            and not Buff.Clearcasting:Exist(Player)
+            and not Buff.Clearcasting:Exist(Player) and not Player.InInstance
         then
             if CancelForm() then debug("Cancel Form [Rejuvenation]") return end
             if Spell.Rejuvenation:Cast(Player) then debug("Cast Rejuvenation") return true end
@@ -309,6 +323,34 @@ local function Defensive()
         then
             if CancelForm() then debug("Cancel Form [Remove Curse]") return end
             if Spell.RemoveCurse:Cast(Player) then debug("Cast Remove Curse") return true end
+        end
+        -- Health Potion
+        if Setting("Health Potion") and Item.HealthPotion and Item.HealthPotion:IsReady()
+            and HP < LowestHealthOption
+            and (Mana >= Spell.CatForm:Cost() or not Shapeshifted)
+            and Mana < ShapeshiftCost(Spell.HealingTouch)
+            and not Player.InInstance
+        then
+            if CancelForm() then debug("Cancel Form [Health Potion]") return end
+            if Item.HealthPotion:Use() then debug("Use Health Potion") return true end
+        end
+        -- Mana Potion
+        if Setting("Mana Potion") and Item.ManaPotion
+            and Item.ManaPotion:IsReady() and (Mana < Spell.CatForm:Cost() * 2)
+        then
+            if CancelForm() then debug("Cancel Form [Mana Potion]") return end
+            if Item.ManaPotion:Use() then debug("Use Mana Potion") return true end
+        end
+        -- Rejuvenation Potion
+        if ((Setting("Health Potion") and Item.HealthPotion and Item.HealthPotion:IsReady()
+                and HP < LowestHealthOption and (Mana >= Spell.CatForm:Cost() or not Shapeshifted)
+                and Mana < ShapeshiftCost(Spell.HealingTouch)
+                and not Player.InInstance)
+            or Setting("Mana Potion") and Item.ManaPotion
+                and Item.ManaPotion:IsReady() and (Mana < Spell.CatForm:Cost() * 2))
+        then
+            if CancelForm() then debug("Cancel Form [Rejuvenation Potion]") return end
+            if Item.RejuvenationPotion:Use() then debug("Use Rejuvenation Potion") return true end
         end
     end
 end
@@ -534,7 +576,10 @@ function Druid.Rotation()
         if Buffs() then return true end
         if Defensive() then return true end
         -- Innervate
-        if Setting("Self-Innervate") and Spell.Innervate:IsReady() and Mana < ShapeshiftCost(Spell.HealingTouch) then
+        if Setting("Self-Innervate") and Spell.Innervate:IsReady()
+            and ((not Player.InInstance and Mana < ShapeshiftCost(Spell.HealingTouch))
+                or (Player.InInstance and Mana < Spell.CatForm:Cost() * 2))
+        then
             Spell.Innervate:Cast(Player)
             debug("Cast Innervate")
         end

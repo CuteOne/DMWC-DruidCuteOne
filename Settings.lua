@@ -58,4 +58,9 @@ function Druid.Settings()
         UI.AddRange("Rejuvenation Percent", nil, 0, 100, 5, 80)
         -- Remove Curse
         UI.AddToggle("Remove Curse", nil, 1)
+        UI.AddBlank()
+        -- Health Potion
+        UI.AddToggle("Health Potion", nil, 1)
+        -- Mana Potion
+        UI.AddToggle("Mana Potion", nil, 1)
 end
