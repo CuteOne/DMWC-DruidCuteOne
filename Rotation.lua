@@ -169,6 +169,13 @@ local function FerociousBiteFinish(thisUnit)
     return finishHim
 end
 
+local function IsAutoAttacking()
+    for i = 1,72 do
+        if IsAttackAction(i) then return IsCurrentAction(i) end
+    end
+    return false
+end
+
 local function Extra()
     if Setting("Auto-Shapeshifting") then
         -- Cancel Form To Speak to NPCs
@@ -410,9 +417,13 @@ local function Caster()
     if Target and Target.ValidEnemy then
         -- No Combat
         if not Player.Combat and not Target.Player then
-            StartAttack()
+            -- Start Attack
+            if not IsAutoAttacking() then
+                StartAttack()
+                debug("Starting Attack")
+            end
             -- Wrath
-            if Spell.Wrath:IsReady() and not Player.Moving and not Spell.Wrath:LastCast()
+            if Spell.Wrath:IsReady() and Target.Facing and not Player.Moving and (not Spell.Wrath:LastCast(true) or not Spell.Moonfire:Known())
                 and Mana >= ShapeshiftCost(Spell.Wrath)
             then
                 if Spell.Wrath:Cast(Target) then debug("Cast Wrath [Pre-Combat]") return true end
@@ -426,7 +437,11 @@ local function Caster()
         end
         -- In Combat
         if Player.Combat then
-            StartAttack()
+            -- Start Attack
+            if not IsAutoAttacking() then
+                StartAttack()
+                debug("Starting Attack")
+            end
             -- Moonfire
             if Spell.Moonfire:IsReady() and not Debuff.Moonfire:Exist(Target) and (LastForm == nil
                 or (LastForm:IsReady() and Target.Distance >= 8 and Mana >= ShapeshiftCost(Spell.Moonfire)))
@@ -434,7 +449,7 @@ local function Caster()
                 if Spell.Moonfire:Cast(Target) then debug("Cast Moonfire") return true end
             end
             -- Wrath
-            if Spell.Wrath:IsReady() and not Player.Moving
+            if Spell.Wrath:IsReady() and Target.Facing and not Player.Moving
                 and (Debuff.Moonfire:Exist(Target) or not Spell.Moonfire:Known())
                 and (LastForm == nil or (LastForm:IsReady() and Target.Distance >= 8
                 and Mana >= ShapeshiftCost(Spell.Wrath)))
