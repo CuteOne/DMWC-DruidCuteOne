@@ -23,6 +23,7 @@ local NeedsHealing
 local freeDPS
 local freeHeal
 local LowestHealthOption
+local CurrentSpell
 
 local function Locals()
     Player = DMW.Player
@@ -59,10 +60,10 @@ local function Locals()
     then
         LastFormBuff = true
     end
-    if Player.Level >= 10 and Spell.BearForm:Known() then
+    if Player.Level >= 10 and Spell.BearForm:Known() and not LastForm then
         if not Spell.DireBearForm:Known() then LastForm = Spell.BearForm else LastForm = Spell.DireBearForm end
     end
-    if Player.Level >= 20 and Spell.CatForm:Known() then LastForm = Spell.CatForm end
+    if Player.Level >= 20 and Spell.CatForm:Known() and not LastForm then LastForm = Spell.CatForm end
     if LastHeal == nil then LastHeal = GetTime() end
     Opener = Setting("Cat Opener")
     TickTime = DMW.Player.TickTime or GetTime()
@@ -82,6 +83,7 @@ local function Locals()
                             or (Setting("Regrowth") and Setting("Regrowth Percent"))
                             or (Setting("Rejuvenation") and Setting("Rejuvenation Percent"))
                             or 25
+    CurrentSpell = Player:CurrentCast()
 end
 
 local function debug(message)
@@ -106,7 +108,9 @@ local function CancelForm()
 end
 
 local function ShapeshiftCost(castSpell)
+    if type(castSpell) == "number" then castSpell = DMW.Helpers.Rotation.GetSpellByID(castSpell) end
     if Setting("Auto-Shapeshifting") then
+        -- Get Shapeshift Spell
         if Player.Level < 10 or not (Spell.DireBearForm:Known() or Spell.BearForm:Known()
             or Spell.CatForm:Known() or Spell.MoonkinForm:Known()
             or Spell.TravelForm:Known() or Spell.AquaticForm:Known())
@@ -121,7 +125,10 @@ local function ShapeshiftCost(castSpell)
             shapeSpell = LastForm
             if shapeSpell == nil then shapeSpell = Spell.CatForm end
         end
-        return shapeSpell:Cost() + castSpell:Cost()
+        -- Get Current Casting Spell Cost
+        local currentSpellCost = not CurrentSpell and 0 or CurrentSpell:Cost()
+        -- Add up shapeshift cost, desire spell cast cost, and current casting spell cost
+        return shapeSpell:Cost() + castSpell:Cost() + currentSpellCost
     end
     return 0
 end
@@ -144,26 +151,46 @@ local function Powershift()
 end
 
 local function FerociousBiteFinish(thisUnit)
-    local desc = GetSpellDescription(Spell.FerociousBite.SpellID)
+    if not Spell.FerociousBite:Known() then return false end
+    local base, posBuff, negBuff = UnitAttackPower("player")
+    local AP = base + posBuff + negBuff
+    local hasFeralAgg = Talent.FeralAggression.Rank == 5 and 1.15 or 1
+    local hasNaturalWeap = Talent.NaturalWeapons.Rank == 5 and 1.1 or 1
+    local HighestRank = Spell.FerociousBite:HighestRank()
+    local desc = GetSpellDescription(Spell.FerociousBite.Ranks[HighestRank])
     local damage = 0
     local finishHim = false
     local unitHealth = tonumber(thisUnit.Health) or 0
     local unitHealthMax = tonumber(thisUnit.HealthMax) or 100
+    local calc = 0
+    local comboStart, damageList, comboEnd = "", "", ""
+
     if thisUnit and Spell.FerociousBite:Known() and ComboPoints > 0
         and unitHealthMax > 100
     then
-        local comboStart = desc:find(" "..ComboPoints.." point",1,true)
+        -- Find damage line for current combo points
+        comboStart = desc:find(" "..ComboPoints.." point",1,true)
         if comboStart ~= nil then
+            -- Adjust to "point" in line
             comboStart = comboStart + 2
-            local damageList = desc:sub(comboStart,desc:len())
+            -- Set to damageList from "ppint" to rest of tooltip
+            damageList = desc:sub(comboStart,desc:len())
+            -- Adjust to damage value in line
             comboStart = damageList:find(": ",1,true)+2
+            -- Adjust damageList to contain damage value and rest of tooltip
             damageList = damageList:sub(comboStart,desc:len())
-            local comboEnd = damageList:find("-",1,true)-1
+            -- Adjust to "-" in line
+            comboEnd = damageList:find("-",1,true)-1
+            -- Adjust damageList removing everything after the damageValue
             damageList = damageList:sub(1,comboEnd)
+            -- Remove any commas
             damage = damageList:gsub(",","")
         end
         damage = tonumber(damage)
-        -- print(damage.." | "..unitHealth)
+        -- Thanks to Rebecca from DR, Classic doesn't adjust tooltip like BfA, dmg calc from: https://nostalrius.org/viewtopic.php?f=41&t=27786
+        calc = ((AP * 0.1526 + (Power - 35) * 2.5 + damage) * hasFeralAgg) * hasNaturalWeap
+        -- print("FB Finish - Tooltip: "..damage..", Calc: "..calc.." | Health: "..unitHealth)
+        damage = calc
         finishHim = damage >= unitHealth
     end
     return finishHim
@@ -172,6 +199,23 @@ end
 local function IsAutoAttacking()
     for i = 1,72 do
         if IsAttackAction(i) then return IsCurrentAction(i) end
+    end
+    return false
+end
+
+local function GetNewTarget(Range,Facing)
+    local TargetUnit = _G["TargetUnit"]
+    local _, EnemiesC = Player:GetEnemies(Range)
+    Facing = Facing or false
+    if Player.Combat and EnemiesC > 0 and (not Player.Target or Target.Dead or Target.Distance > Range) then
+        for _, Unit in ipairs(DMW.Enemies) do
+            if Unit.Distance <= Range and (not Facing or Unit.Facing) then
+                debug("Targeting New Enemy")
+                TargetUnit(Unit.Pointer)
+                DMW.Player.Target = Unit
+                return true
+            end
+        end
     end
     return false
 end
@@ -301,6 +345,7 @@ local function Defensive()
         if Setting("Healing Touch") and IsReadyShapeshifted(Spell.HealingTouch)
             and (Mana >= ShapeshiftCost(Spell.HealingTouch) or freeHeal) and HP <= Setting("Healing Touch Percent")
             and noShapeshiftPower and not Spell.HealingTouch:LastCast() and not Player.InInstance
+            and (not CurrentSpell or CurrentSpell ~= Spell.Regrowth) --and Spell.Regrowth:TimeSinceLastCast() > GCD
         then
             if CancelForm() then debug("Cancel Form [Healing Touch]") return end
             if Spell.HealingTouch:Cast(Player) then debug("Cast Healing Touch") return true end
@@ -310,6 +355,7 @@ local function Defensive()
             and not Buff.Regrowth:Exist(Player) and HP <= Setting("Regrowth Percent")
             and not Spell.Regrowth:LastCast() and (Mana >= ShapeshiftCost(Spell.Regrowth) or freeHeal)
             and noShapeshiftPower and not Spell.Regrowth:LastCast() and not Player.InInstance
+            and (not CurrentSpell or CurrentSpell ~= Spell.HealingTouch) --and Spell.HealingTouch:TimeSinceLastCast() > GCD
         then
             if CancelForm() then debug("Cancel Form [Regrowth]") return end
             if Spell.Regrowth:Cast(Player) then debug("Cast Regrowth") return true end
@@ -363,6 +409,7 @@ local function Defensive()
 end
 
 local function Bear()
+    Player:AutoTarget(5, true)
     if Target and Target.ValidEnemy then
         -- No Combat
         if not Player.Combat and not Target.Player then
@@ -392,7 +439,7 @@ local function Bear()
             --     -- if Spell.BearForm:Cast(Player) then debug("Cast Bear Form") return true end
             -- end
             -- Enrage
-            if Spell.Enrage:IsReady() and Player.Power < 10 and Unit5F.Distance < 8 then
+            if Spell.Enrage:IsReady() and Player.Power < 10 and Unit5F.Distance < 8 and HP > 80 then
                 if Spell.Enrage:Cast(Player) then debug("Cast Enrage") return true end
             end
             -- Demoralizing Roar
@@ -414,6 +461,7 @@ local function Bear()
 end
 
 local function Caster()
+    Player:AutoTarget(40, true)
     if Target and Target.ValidEnemy then
         -- No Combat
         if not Player.Combat and not Target.Player then
@@ -422,15 +470,22 @@ local function Caster()
                 StartAttack()
                 debug("Starting Attack")
             end
+            -- Moonfire (Shapeshift)
+            if Spell.Moonfire:IsReady() and not Debuff.Moonfire:Exist(Target)
+                and Mana >= ShapeshiftCost(Spell.Moonfire.Ranks[Spell.Moonfire:HighestRank()])
+                and LastForm:IsReady() and Target.Distance >= 8
+            then
+                if Spell.Moonfire:Cast(Target,1) then debug("Cast Moonfire [Pre-Combat - Shapeshift]") return true end
+            end
             -- Wrath
             if Spell.Wrath:IsReady() and Target.Facing and not Player.Moving and (not Spell.Wrath:LastCast(true) or not Spell.Moonfire:Known())
-                and Mana >= ShapeshiftCost(Spell.Wrath)
+                and Mana >= ShapeshiftCost(Spell.Wrath) and (LastForm == nil or (LastForm:IsReady() and Target.Distance >= 8))
             then
                 if Spell.Wrath:Cast(Target) then debug("Cast Wrath [Pre-Combat]") return true end
             end
             -- Moonfire
             if Spell.Moonfire:IsReady() and (Player.Moving or Spell.Wrath:LastCast())
-                and Mana >= ShapeshiftCost(Spell.Moonfire)
+                and Mana >= ShapeshiftCost(Spell.Moonfire) and (LastForm == nil or (LastForm:IsReady() and Target.Distance >= 8))
             then
                 if Spell.Moonfire:Cast(Target) then debug("Cast Moonfire [Pre-Combat]") return true end
             end
@@ -475,13 +530,14 @@ local function Cat()
             end
         end
     end
+    Player:AutoTarget(5, true)
     if Target and Target.ValidEnemy and Target.Distance < 5 then
         -- Stealth Opener
-        if Buff.Prowl:Exist(Player) and Target:IsBehind() and not Target.Player then
+        if Buff.Prowl:Exist(Player) and (Target:IsBehind() or not Spell.Shred:Known()) and not Target.Player then
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady() and TickTimeRemain > 0
                 and TickTimeRemain < 0.1 and not Buff.TigersFury:Exist(Player)
-                and Spell.TigersFury:TimeSinceLastCast() > GCD
+                --and Spell.TigersFury:TimeSinceLastCast() > GCD
             then
                 if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury [Stealth Pre-Combat]") return end
             end
@@ -498,7 +554,9 @@ local function Cat()
                 if Spell.Shred:Cast(Target) then debug("Cast Shred [Stealth Pre-Combat]") return true end
             end
             -- Rake
-            if Setting("Rake") and (Opener == 4 or (Opener <= 3 and not Spell.Shred:Known())) and Spell.Rake:IsReady() then
+            if Setting("Rake") and (Opener == 4 or (Opener <= 3 and not Spell.Shred:Known()))
+                and Spell.Rake:IsReady() and not Unit5F:IsImmune("Bleed")
+            then
                 if Spell.Rake:Cast(Target) then debug("Cast Rake [Stealth Pre-Combat]") return true end
             end
             -- Claw
@@ -513,14 +571,10 @@ local function Cat()
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady() and TickTimeRemain > 0
                 and TickTimeRemain < 0.1 and not Buff.TigersFury:Exist(Player)
-                and Spell.TigersFury:TimeSinceLastCast() > GCD
+                --and Spell.TigersFury:TimeSinceLastCast() > GCD
             then
                 if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury [Pre-Combat]") return end
             end
-            -- -- Rake
-            -- if Setting("Rake") and Spell.Rake:IsReady() and Debuff.Rake:Refresh(Target) then
-            --     if Spell.Rake:Cast(Target) then debug("Cast Rake [Pre-Combat]") return true end
-            -- end
             -- Shred
             if Spell.Shred:IsReady() and Target:IsBehind() then
                 if Spell.Shred:Cast(Target) then debug("Cast Shred [Pre-Combat]") return true end
@@ -540,7 +594,7 @@ local function Cat()
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady()
                 and Power == 100 and not Buff.TigersFury:Exist(Player)
-                and Spell.TigersFury:TimeSinceLastCast() > GCD
+                --and Spell.TigersFury:TimeSinceLastCast() > GCD
             then
                 if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury") return true end
             end
@@ -556,7 +610,9 @@ local function Cat()
                     if Spell.FerociousBite:Cast(Unit5F) then debug("Cast Ferocious Bite") return true end
                 end
                 -- Rip
-                if Setting("Rip") and Spell.Rip:IsReady() and Unit5F.TTD > 6 and not Spell.FerociousBite:Known() then
+                if Setting("Rip") and Spell.Rip:IsReady() and Unit5F.TTD > 6
+                    and not Spell.FerociousBite:Known() and not Unit5F:IsImmune("Bleed")
+                then
                     if Spell.Rip:Cast(Unit5F) then debug("Cast Rip") return true end
                 end
             end
@@ -567,7 +623,8 @@ local function Cat()
                 end
                 -- Rake
                 if Setting("Rake") and Spell.Rake:IsReady() and Debuff.Rake:Refresh(Unit5F)
-                    and Unit5F.TTD <= 3 and not freeDPS
+                    and (Unit5F.TTD <= 3 or not Spell.FerociousBite:Known()) and not freeDPS
+                    and not Unit5F:IsImmune("Bleed")
                 then
                     if Spell.Rake:Cast(Unit5F) then debug("Cast Rake") return true end
                 end
@@ -609,7 +666,7 @@ function Druid.Rotation()
         if not Shapeshifted then
             if Caster() then return true end
         end
-        if Buff.BearForm:Exist(Player) then
+        if Buff.BearForm:Exist(Player) or Buff.DireBearForm:Exist(Player) then
             if Bear() then return true end
         end
         if Buff.CatForm:Exist(Player) then
