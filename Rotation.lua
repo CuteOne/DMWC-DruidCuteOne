@@ -60,13 +60,13 @@ local function Locals()
     then
         LastFormBuff = true
     end
-    if Player.Level >= 10 and Spell.BearForm:Known() and not LastForm then
+    if Player.Level >= 10 and Spell.BearForm:Known() then
         if not Spell.DireBearForm:Known() then LastForm = Spell.BearForm else LastForm = Spell.DireBearForm end
     end
-    if Player.Level >= 20 and Spell.CatForm:Known() and not LastForm then LastForm = Spell.CatForm end
+    if Player.Level >= 20 and Spell.CatForm:Known() then LastForm = Spell.CatForm end
     if LastHeal == nil then LastHeal = GetTime() end
     Opener = Setting("Cat Opener")
-    TickTime = DMW.Player.TickTime or GetTime()
+    TickTime = DMW.Player.TickTime or GetTime() + 0.05
     TickTimeRemain = TickTime - GetTime()
     noShapeshiftPower = ((not Buff.CatForm:Exist(Player) or (Buff.CatForm:Exist(Player) and Power < 30))
     and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < 10))) or not Player.Combat
@@ -107,7 +107,7 @@ local function CancelForm()
     end
 end
 
-local function ShapeshiftCost(castSpell)
+local function ShapeshiftCost(castSpell,bufferSpell)
     if type(castSpell) == "number" then castSpell = DMW.Helpers.Rotation.GetSpellByID(castSpell) end
     if Setting("Auto-Shapeshifting") then
         -- Get Shapeshift Spell
@@ -125,10 +125,13 @@ local function ShapeshiftCost(castSpell)
             shapeSpell = LastForm
             if shapeSpell == nil then shapeSpell = Spell.CatForm end
         end
+        -- Check for Buffer Spell and Get Cost
+        local bufferCost = 0
+        if bufferSpell ~= nil then bufferCost = bufferSpell:Cost() end
         -- Get Current Casting Spell Cost
         local currentSpellCost = not CurrentSpell and 0 or CurrentSpell:Cost()
         -- Add up shapeshift cost, desire spell cast cost, and current casting spell cost
-        return shapeSpell:Cost() + castSpell:Cost() + currentSpellCost
+        return shapeSpell:Cost() + castSpell:Cost() + currentSpellCost + bufferCost
     end
     return 0
 end
@@ -220,6 +223,19 @@ local function GetNewTarget(Range,Facing)
     return false
 end
 
+local function InAggroRange(offset)
+    local offset = offset or 0
+    for _, Unit in ipairs(Attackable40Y) do
+        local threatRange = max((20 + (Unit.Level - Player.Level)),5) + offset
+        if Unit.Distance < threatRange
+            and (UnitReaction("player",Unit.Pointer) < 4 or (Target and Target.ValidEnemy))
+        then
+            return true
+        end
+    end
+    return false
+end
+
 local function Extra()
     if Setting("Auto-Shapeshifting") then
         -- Cancel Form To Speak to NPCs
@@ -229,12 +245,22 @@ local function Extra()
             if CancelForm() then debug("Cancel Form [NPC]") return true end
         end
         -- Aquatic Form
-        if not Player.Combat and IsReadyShapeshifted(Spell.AquaticForm)
+        if Setting("Aquatic Form") and not Player.Combat and IsReadyShapeshifted(Spell.AquaticForm)
             and IsSwimming("player") and not Buff.AquaticForm:Exist(Player) and not Buff.Prowl:Exist(Player)
-            and Player.Moving and Mana >= ShapeshiftCost(Spell.AquaticForm) and #Enemies5Y == 0
+            and Player.Moving and Player.MovingTime > 2 and Mana >= ShapeshiftCost(Spell.AquaticForm,LastForm)
+            and not InAggroRange()
         then
             if CancelForm() then debug("Cancel Form [Swimming]") end
             if Spell.AquaticForm:Cast(Player) then debug("Cast Aquatic Form") return true end
+        end
+        -- Travel Form
+        if Setting("Travel Form") and not Player.Combat and not IsMounted() and not IsSwimming("player")
+            and IsReadyShapeshifted(Spell.TravelForm) and not Player:IsInside() and not Buff.TravelForm:Exist(Player)
+            and not Buff.Prowl:Exist(Player) and Player.Moving and Player.MovingTime > 2
+            and Mana >= ShapeshiftCost(Spell.TravelForm,LastForm) and not InAggroRange()
+        then
+            if CancelForm() then debug("Cancel Form [Travel]") end
+            if Spell.TravelForm:Cast(Player) then debug("Cast Travel Form") return true end
         end
     end
     -- Powershifting
@@ -345,7 +371,7 @@ local function Defensive()
         if Setting("Healing Touch") and IsReadyShapeshifted(Spell.HealingTouch)
             and (Mana >= ShapeshiftCost(Spell.HealingTouch) or freeHeal) and HP <= Setting("Healing Touch Percent")
             and noShapeshiftPower and not Spell.HealingTouch:LastCast() and not Player.InInstance
-            and (not CurrentSpell or CurrentSpell ~= Spell.Regrowth) --and Spell.Regrowth:TimeSinceLastCast() > GCD
+            and (not CurrentSpell or CurrentSpell ~= Spell.Regrowth) and Spell.Regrowth:TimeSinceLastCast() > GCD * 2
         then
             if CancelForm() then debug("Cancel Form [Healing Touch]") return end
             if Spell.HealingTouch:Cast(Player) then debug("Cast Healing Touch") return true end
@@ -355,7 +381,7 @@ local function Defensive()
             and not Buff.Regrowth:Exist(Player) and HP <= Setting("Regrowth Percent")
             and not Spell.Regrowth:LastCast() and (Mana >= ShapeshiftCost(Spell.Regrowth) or freeHeal)
             and noShapeshiftPower and not Spell.Regrowth:LastCast() and not Player.InInstance
-            and (not CurrentSpell or CurrentSpell ~= Spell.HealingTouch) --and Spell.HealingTouch:TimeSinceLastCast() > GCD
+            and (not CurrentSpell or CurrentSpell ~= Spell.HealingTouch) and Spell.HealingTouch:TimeSinceLastCast() > GCD * 2
         then
             if CancelForm() then debug("Cancel Form [Regrowth]") return end
             if Spell.Regrowth:Cast(Player) then debug("Cast Regrowth") return true end
@@ -521,26 +547,25 @@ local function Cat()
         and Buff.CatForm:Exist(Player) and not Buff.Prowl:Exist(Player) and Player.CombatLeftTime > 1
         and Spell.Prowl:TimeSinceLastCast() > GCD
     then
-        for _, Unit in ipairs(Attackable40Y) do
-            local threatRange = max((20 + (Unit.Level - Player.Level)),5)
-            if Unit.Distance < threatRange
-                and (UnitReaction("player",Unit.Pointer) < 4 or (Target and Target.ValidEnemy))
-            then
-                if Spell.Prowl:Cast(Player) then debug("Cast Prowl") return true end
-            end
+        if InAggroRange() then
+            if Spell.Prowl:Cast(Player) then debug("Cast Prowl") return true end
         end
     end
     Player:AutoTarget(5, true)
-    if Target and Target.ValidEnemy and Target.Distance < 5 then
+    if Target and Target.ValidEnemy and Spell.Claw:InRange(Target) then
+        -- Tiger's Fury
+        if Setting("Tiger's Fury") and Spell.TigersFury:IsReady()
+            -- and TickTimeRemain > 0 and TickTimeRemain < 0.1 
+            and not Buff.TigersFury:Exist(Player) and Power == 100
+            and not Target.Player
+            --and Spell.TigersFury:TimeSinceLastCast() > GCD
+        then
+            if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury [Pre-Combat]") return end
+        end
         -- Stealth Opener
-        if Buff.Prowl:Exist(Player) and (Target:IsBehind() or not Spell.Shred:Known()) and not Target.Player then
-            -- Tiger's Fury
-            if Setting("Tiger's Fury") and Spell.TigersFury:IsReady() and TickTimeRemain > 0
-                and TickTimeRemain < 0.1 and not Buff.TigersFury:Exist(Player)
-                --and Spell.TigersFury:TimeSinceLastCast() > GCD
-            then
-                if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury [Stealth Pre-Combat]") return end
-            end
+        if Buff.Prowl:Exist(Player) and not Target.Player
+            and (not (Setting("Tiger's Fury") or not Spell.TigersFury:Known() or Power < 100) or Buff.TigersFury:Exist(Player))
+        then
             -- Pounce
             if Opener == 1 and Spell.Pounce:IsReady() then
                 if Spell.Pounce:Cast(Target) then debug("Cast Pounce [Stealth Pre-Combat]") return true end
@@ -550,7 +575,7 @@ local function Cat()
                 if Spell.Ravage:Cast(Target) then debug("Cast Ravage [Stealth Pre-Combat]") return true end
             end
             -- Shred
-            if (Opener == 3 or (Opener <= 2 and not Spell.Ravage:Known())) and Spell.Shred:IsReady() then
+            if (Opener == 3 or (Opener <= 2 and not Spell.Ravage:Known())) and Spell.Shred:IsReady() and Target:IsBehind() then
                 if Spell.Shred:Cast(Target) then debug("Cast Shred [Stealth Pre-Combat]") return true end
             end
             -- Rake
@@ -567,14 +592,9 @@ local function Cat()
             end
         end
         -- No Stealth Opener
-        if not Buff.Prowl:Exist(Player) and not Player.Combat and not Target.Player then
-            -- Tiger's Fury
-            if Setting("Tiger's Fury") and Spell.TigersFury:IsReady() and TickTimeRemain > 0
-                and TickTimeRemain < 0.1 and not Buff.TigersFury:Exist(Player)
-                --and Spell.TigersFury:TimeSinceLastCast() > GCD
-            then
-                if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury [Pre-Combat]") return end
-            end
+        if not Buff.Prowl:Exist(Player) and (Target:IsBehind() or not Spell.Shred:Known()) and not Target.Player
+            and (not (Setting("Tiger's Fury") or not Spell.TigersFury:Known() or Power < 100) or Buff.TigersFury:Exist(Player))
+        then
             -- Shred
             if Spell.Shred:IsReady() and Target:IsBehind() then
                 if Spell.Shred:Cast(Target) then debug("Cast Shred [Pre-Combat]") return true end
@@ -656,9 +676,10 @@ function Druid.Rotation()
             debug("Cast Innervate")
         end
         -- Last Form
-        if Setting("Auto-Shapeshifting") and LastForm ~= nil and (Player.Moving or Player.Combat)
-            and not LastFormBuff and (not (Buff.AquaticForm:Exist(Player) or Buff.TravelForm:Exist(Player))
-                or #Enemies5Y > 0 or (Target and Target.Distance < 8))
+        if Setting("Auto-Shapeshifting") and Setting("Last Form") and LastForm ~= nil
+            and ((Player.Moving and Player.MovingTime > 2 and (not Spell.TravelForm:Known() or Player:IsInside())) or Player.Combat or InAggroRange(5))
+            and not LastFormBuff and (not (Buff.AquaticForm:Exist(Player) or Buff.TravelForm:Exist(Player)) or InAggroRange(5))
+                -- or #Enemies5Y > 0 or (Target and Target.Distance < 8))
         then
             if CancelForm() then debug("Cancel Form [Last Form]") return end
             if LastForm:Cast(Player) then debug("Cast Last Form") return true end
