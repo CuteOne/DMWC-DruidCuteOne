@@ -14,7 +14,6 @@ local Attackable40Y, Attackable40YC
 local Enemies5Y, Enemies5YC
 local Unit5F
 local LastHeal
-local LastCancel
 local Opener
 local TickTime = DMW.Player.TickTime or GetTime()
 local TickTimeRemain = TickTime - GetTime()
@@ -24,6 +23,8 @@ local freeDPS
 local freeHeal
 local LowestHealthOption
 local CurrentSpell
+local GenderTable = {"It", "Him", "Her"}
+local Gender = "None"
 
 local function Locals()
     Player = DMW.Player
@@ -84,6 +85,7 @@ local function Locals()
                             or (Setting("Rejuvenation") and Setting("Rejuvenation Percent"))
                             or 25
     CurrentSpell = Player:CurrentCast()
+    if Target then Gender = GenderTable[UnitSex("target")] end
 end
 
 local function debug(message)
@@ -242,19 +244,24 @@ local function Extra()
         if Target and Target.Friend and not Target.ValidEnemy and not Target.Dead and not Target.Player
             and Target.Distance < 8 and Shapeshifted
         then
-            if CancelForm() then debug("Cancel Form [NPC]") return true end
+            if CancelForm() then
+                debug("Cancel Form [NPC]")
+                InteractUnit("target")
+                debug("Interacting [NPC]")
+                return true
+            end 
         end
         -- Aquatic Form
         if Setting("Aquatic Form") and not Player.Combat and IsReadyShapeshifted(Spell.AquaticForm)
-            and IsSwimming("player") and not Buff.AquaticForm:Exist(Player) and not Buff.Prowl:Exist(Player)
+            and IsSwimming() and not Buff.AquaticForm:Exist(Player) and not Buff.Prowl:Exist(Player)
             and Player.Moving and Player.MovingTime > 2 and Mana >= ShapeshiftCost(Spell.AquaticForm,LastForm)
-            and not InAggroRange()
+            and not InAggroRange() and Player.SwimmingTime > 2
         then
             if CancelForm() then debug("Cancel Form [Swimming]") end
             if Spell.AquaticForm:Cast(Player) then debug("Cast Aquatic Form") return true end
         end
         -- Travel Form
-        if Setting("Travel Form") and not Player.Combat and not IsMounted() and not IsSwimming("player")
+        if Setting("Travel Form") and not Player.Combat and not IsMounted() and not IsSwimming() and not IsFalling()
             and IsReadyShapeshifted(Spell.TravelForm) and not Player:IsInside() and not Buff.TravelForm:Exist(Player)
             and not Buff.Prowl:Exist(Player) and Player.Moving and Player.MovingTime > 2
             and Mana >= ShapeshiftCost(Spell.TravelForm,LastForm) and not InAggroRange()
@@ -371,29 +378,32 @@ local function Defensive()
         if Setting("Healing Touch") and IsReadyShapeshifted(Spell.HealingTouch)
             and (Mana >= ShapeshiftCost(Spell.HealingTouch) or freeHeal) and HP <= Setting("Healing Touch Percent")
             and noShapeshiftPower and not Spell.HealingTouch:LastCast() and not Player.InInstance
-            and (not CurrentSpell or CurrentSpell ~= Spell.Regrowth) and Spell.Regrowth:TimeSinceLastCast() > GCD * 2
+            -- and (not CurrentSpell or CurrentSpell ~= Spell.Regrowth) and Spell.Regrowth:TimeSinceLastCast() > GCD * 2
+            and not Player.HealPending and Player.LastHeal < GetTime() - 0.5
         then
             if CancelForm() then debug("Cancel Form [Healing Touch]") return end
-            if Spell.HealingTouch:Cast(Player) then debug("Cast Healing Touch") return true end
+            if Spell.HealingTouch:Cast(Player) then debug("Cast Healing Touch") Player.HealPending = true return true end
         end
         -- Regrowth
         if Setting("Regrowth") and IsReadyShapeshifted(Spell.Regrowth)
             and not Buff.Regrowth:Exist(Player) and HP <= Setting("Regrowth Percent")
             and not Spell.Regrowth:LastCast() and (Mana >= ShapeshiftCost(Spell.Regrowth) or freeHeal)
             and noShapeshiftPower and not Spell.Regrowth:LastCast() and not Player.InInstance
-            and (not CurrentSpell or CurrentSpell ~= Spell.HealingTouch) and Spell.HealingTouch:TimeSinceLastCast() > GCD * 2
+            -- and (not CurrentSpell or CurrentSpell ~= Spell.HealingTouch) and Spell.HealingTouch:TimeSinceLastCast() > GCD * 2
+            and not Player.HealPending and Player.LastHeal < GetTime() - 0.5
         then
             if CancelForm() then debug("Cancel Form [Regrowth]") return end
-            if Spell.Regrowth:Cast(Player) then debug("Cast Regrowth") return true end
+            if Spell.Regrowth:Cast(Player) then debug("Cast Regrowth") Player.HealPending = true return true end
         end
         -- Rejuvenation
         if Setting("Rejuvenation") and IsReadyShapeshifted(Spell.Rejuvenation)
             and not Buff.Rejuvenation:Exist(Player) and HP <= Setting("Rejuvenation Percent")
             and Mana >= ShapeshiftCost(Spell.Rejuvenation) and not Player.Combat
             and not Buff.Clearcasting:Exist(Player) and not Player.InInstance
+            and not Player.HealPending and Player.LastHeal < GetTime() - 0.5
         then
             if CancelForm() then debug("Cancel Form [Rejuvenation]") return end
-            if Spell.Rejuvenation:Cast(Player) then debug("Cast Rejuvenation") return true end
+            if Spell.Rejuvenation:Cast(Player) then debug("Cast Rejuvenation") Player.HealPending = true return true end
         end
         -- Remove Curse
         if Setting("Remove Curse") and IsReadyShapeshifted(Spell.RemoveCurse)
@@ -496,8 +506,14 @@ local function Caster()
                 StartAttack()
                 debug("Starting Attack")
             end
+            -- Faerie Fire
+            if Spell.FaerieFire:IsReady() and not Debuff.FaerieFire:Exist(Target) and Mana >= ShapeshiftCost(Spell.FaerieFire)
+                and LastForm:IsReady() and Target.Distance >= 8
+            then
+                if Spell.FaerieFire:Cast(Target) then debug("Cast Faerie Fire [Pre-Combat]") return true end
+            end
             -- Moonfire (Shapeshift)
-            if Spell.Moonfire:IsReady() and not Debuff.Moonfire:Exist(Target)
+            if Spell.Moonfire:IsReady() and not Spell.FaerieFire:Known() and not Debuff.Moonfire:Exist(Target)
                 and Mana >= ShapeshiftCost(Spell.Moonfire.Ranks[Spell.Moonfire:HighestRank()])
                 and LastForm:IsReady() and Target.Distance >= 8
             then
@@ -571,7 +587,7 @@ local function Cat()
                 if Spell.Pounce:Cast(Target) then debug("Cast Pounce [Stealth Pre-Combat]") return true end
             end
             -- Ravage
-            if (Opener == 2 or (Opener <= 1 and not Spell.Pounce:Known())) and Spell.Ravage:IsReady() then
+            if (Opener == 2 or (Opener <= 1 and not Spell.Pounce:Known())) and Spell.Ravage:IsReady() and Target:IsBehind() then
                 if Spell.Ravage:Cast(Target) then debug("Cast Ravage [Stealth Pre-Combat]") return true end
             end
             -- Shred
@@ -609,7 +625,7 @@ local function Cat()
             StartAttack()
             -- Ferocious Bite - Finish Him!
             if Spell.FerociousBite:IsReady() and Power >= 35 and FerociousBiteFinish(Unit5F) then
-                if Spell.FerociousBite:Cast(Unit5F) then debug("Cast Ferocious Bite [Finish Him!]") return true end
+                if Spell.FerociousBite:Cast(Unit5F) then debug("Cast Ferocious Bite [Finish "..Gender.."!]") return true end
             end
             -- Tiger's Fury
             if Setting("Tiger's Fury") and Spell.TigersFury:IsReady()
@@ -677,7 +693,8 @@ function Druid.Rotation()
         end
         -- Last Form
         if Setting("Auto-Shapeshifting") and Setting("Last Form") and LastForm ~= nil
-            and ((Player.Moving and Player.MovingTime > 2 and (not Spell.TravelForm:Known() or Player:IsInside())) or Player.Combat or InAggroRange(5))
+            and ((Player.Moving and Player.MovingTime > 2 and (not Spell.TravelForm:Known() or Player:IsInside() or not Setting("Travel Form")))
+            or ((Player.Combat or InAggroRange(5)) and ((Target and not Target.Friend) or not Target)))
             and not LastFormBuff and (not (Buff.AquaticForm:Exist(Player) or Buff.TravelForm:Exist(Player)) or InAggroRange(5))
                 -- or #Enemies5Y > 0 or (Target and Target.Distance < 8))
         then
