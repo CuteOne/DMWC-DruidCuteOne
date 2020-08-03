@@ -40,10 +40,28 @@ function Druid.Settings()
         -- Tiger's Fury
         UI.AddToggle("Tiger's Fury", "Enable/Disable Using Tiger's Fury", 1)
     UI.AddHeader("Defensives")
+        UI.AddLabel("Cures")
         -- Abolish Poison
         UI.AddToggle("Abolish Poison", "Enable/Disable Using Abolish Poison", 1)
         -- Cure Poison
         UI.AddToggle("Cure Poison", "Enable/Disable Using Cure Poison", 1)
+        -- Remove Curse
+        UI.AddToggle("Remove Curse", "Enable/Disable Using Remove Curse", 1)
+        UI.AddBlank()
+        UI.AddLabel("Heals")
+        -- Self-Heal In Group
+        UI.AddToggle("Self Heal In Group", "Enable/Disable Healing Self while Grouped", 0)
+        UI.AddBlank()
+        -- Healing Touch
+        UI.AddToggle("Healing Touch", "Enable/Disable Using Healing Touch", 1)
+        UI.AddRange("Healing Touch Percent", "Select HP to use at, Default: 40%", 0, 100, 5, 40)
+        -- Regrowth
+        UI.AddToggle("Regrowth", "Enable/Disable Using Regrowth", 1)
+        UI.AddRange("Regrowth Percent", "Select HP to use at, Default: 60%", 0, 100, 5, 60)
+        -- Rejuvenation
+        UI.AddToggle("Rejuvenation", "Enable/Disable Using Rejuvenation", 1)
+        UI.AddRange("Rejuvenation Percent", "Select HP to use at, Default: 80%", 0, 100, 5, 80)
+        UI.AddLabel("Other")
         -- Barkskin
         UI.AddToggle("Barkskin", "Enable/Disable Using Barkskin", 1)
         UI.AddRange("Barkskin Percent", "Select HP to use at, Default: 50%", 0, 100, 5, 50)
@@ -51,20 +69,8 @@ function Druid.Settings()
         UI.AddToggle("Entangling Roots", "Enable/Disable Using Entagling Roots", 1)
         -- Faerie Fire
         UI.AddToggle("Faerie Fire", "Enable/Disable Using Faerie Fire/Faerie Fire Feral", 1)
-        -- Healing Touch
-        UI.AddToggle("Healing Touch", "Enable/Disable Using Healing Touch", 1)
-        UI.AddRange("Healing Touch Percent", "Select HP to use at, Default: 40%", 0, 100, 5, 40)
         -- Nature's Grasp
         UI.AddToggle("Nature's Grasp", "Enable/Disable Using Nature's Grasp", 1)
-        UI.AddBlank()
-        -- Regrowth
-        UI.AddToggle("Regrowth", "Enable/Disable Using Regrowth", 1)
-        UI.AddRange("Regrowth Percent", "Select HP to use at, Default: 60%", 0, 100, 5, 60)
-        -- Rejuvenation
-        UI.AddToggle("Rejuvenation", "Enable/Disable Using Rejuvenation", 1)
-        UI.AddRange("Rejuvenation Percent", "Select HP to use at, Default: 80%", 0, 100, 5, 80)
-        -- Remove Curse
-        UI.AddToggle("Remove Curse", "Enable/Disable Using Remove Curse", 1)
         UI.AddBlank()
         -- Health Potion
         UI.AddToggle("Health Potion", "Enable/Disable Using Health Potion", 1)

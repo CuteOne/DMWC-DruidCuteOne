@@ -377,7 +377,7 @@ local function Defensive()
         -- Healing Touch
         if Setting("Healing Touch") and IsReadyShapeshifted(Spell.HealingTouch)
             and (Mana >= ShapeshiftCost(Spell.HealingTouch) or freeHeal) and HP <= Setting("Healing Touch Percent")
-            and noShapeshiftPower and not Spell.HealingTouch:LastCast() and not Player.InInstance
+            and noShapeshiftPower and not Spell.HealingTouch:LastCast() and (not Player.InGroup or Setting("Self Heal In Group"))
             -- and (not CurrentSpell or CurrentSpell ~= Spell.Regrowth) and Spell.Regrowth:TimeSinceLastCast() > GCD * 2
             and not Player.HealPending and Player.LastHeal < GetTime() - 0.5
         then
@@ -388,7 +388,7 @@ local function Defensive()
         if Setting("Regrowth") and IsReadyShapeshifted(Spell.Regrowth)
             and not Buff.Regrowth:Exist(Player) and HP <= Setting("Regrowth Percent")
             and not Spell.Regrowth:LastCast() and (Mana >= ShapeshiftCost(Spell.Regrowth) or freeHeal)
-            and noShapeshiftPower and not Spell.Regrowth:LastCast() and not Player.InInstance
+            and noShapeshiftPower and not Spell.Regrowth:LastCast() and (not Player.InGroup or Setting("Self Heal In Group"))
             -- and (not CurrentSpell or CurrentSpell ~= Spell.HealingTouch) and Spell.HealingTouch:TimeSinceLastCast() > GCD * 2
             and not Player.HealPending and Player.LastHeal < GetTime() - 0.5
         then
@@ -399,7 +399,7 @@ local function Defensive()
         if Setting("Rejuvenation") and IsReadyShapeshifted(Spell.Rejuvenation)
             and not Buff.Rejuvenation:Exist(Player) and HP <= Setting("Rejuvenation Percent")
             and Mana >= ShapeshiftCost(Spell.Rejuvenation) and not Player.Combat
-            and not Buff.Clearcasting:Exist(Player) and not Player.InInstance
+            and not Buff.Clearcasting:Exist(Player) and (not Player.InGroup or Setting("Self Heal In Group"))
             and not Player.HealPending and Player.LastHeal < GetTime() - 0.5
         then
             if CancelForm() then debug("Cancel Form [Rejuvenation]") return end
@@ -418,25 +418,25 @@ local function Defensive()
             and HP < LowestHealthOption
             and (Mana >= Spell.CatForm:Cost() or not Shapeshifted)
             and Mana < ShapeshiftCost(Spell.HealingTouch)
-            and not Player.InInstance
+            and (not Player.InGroup or Setting("Self Heal In Group"))
         then
             if CancelForm() then debug("Cancel Form [Health Potion]") return end
             if Item.HealthPotion:Use() then debug("Use Health Potion") return true end
         end
         -- Mana Potion
         if Setting("Mana Potion") and Item.ManaPotion
-            and Item.ManaPotion:IsReady() and (Mana < Spell.CatForm:Cost() * 2)
+            and Item.ManaPotion:IsReady() and Mana < Spell.CatForm:Cost()
         then
             if CancelForm() then debug("Cancel Form [Mana Potion]") return end
             if Item.ManaPotion:Use() then debug("Use Mana Potion") return true end
         end
         -- Rejuvenation Potion
-        if ((Setting("Health Potion") and Item.HealthPotion and Item.HealthPotion:IsReady()
-                and HP < LowestHealthOption and (Mana >= Spell.CatForm:Cost() or not Shapeshifted)
+        if Item.RejuvenationPotion and Item.RejuvenationPotion:IsReady()
+            and ((Setting("Health Potion") and HP < LowestHealthOption
+                and (Mana >= Spell.CatForm:Cost() or not Shapeshifted)
                 and Mana < ShapeshiftCost(Spell.HealingTouch)
-                and not Player.InInstance)
-            or Setting("Mana Potion") and Item.ManaPotion
-                and Item.ManaPotion:IsReady() and (Mana < Spell.CatForm:Cost() * 2))
+                and (not Player.InGroup or Setting("Self Heal In Group")))
+            or (Setting("Mana Potion") and Mana < Spell.CatForm:Cost()))
         then
             if CancelForm() then debug("Cancel Form [Rejuvenation Potion]") return end
             if Item.RejuvenationPotion:Use() then debug("Use Rejuvenation Potion") return true end
@@ -455,11 +455,11 @@ local function Bear()
                 if Spell.Enrage:Cast(Player) then debug("Cast Enrage [Pre-Combat]") return true end
             end
             -- Swipe
-            if Spell.Swipe:IsReady() and #Enemies5Y >= 3 then
+            if Spell.Swipe:IsReady() and #Enemies5Y >= 3 and Target.Facing then
                 if Spell.Swipe:Cast(Unit5F) then debug("Cast Swipe [Pre-Combat]") return true end
             end
             -- Maul
-            if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3) then
+            if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3) and Target.Facing then
                 if Spell.Maul:Cast(Unit5F) then debug("Cast Maul [Pre-Combat]") return true end
             end
         end
@@ -485,11 +485,11 @@ local function Bear()
                 if Spell.DemoralizingRoar:Cast(Player) then debug("Cast Demoralizing Roar") return true end
             end
             -- Swipe
-            if Spell.Swipe:IsReady() and #Enemies5Y >= 3 then
+            if Spell.Swipe:IsReady() and #Enemies5Y >= 3 and Target.Facing then
                 if Spell.Swipe:Cast(Unit5F) then debug("Cast Swipe") return true end
             end
             -- Maul
-            if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3) then
+            if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3) and Target.Facing then
                 if Spell.Maul:Cast(Unit5F) then debug("Cast Maul") return true end
             end
         end
@@ -568,10 +568,10 @@ local function Cat()
         end
     end
     Player:AutoTarget(5, true)
-    if Target and Target.ValidEnemy and Spell.Claw:InRange(Target) then
+    if Target and Target.ValidEnemy and Spell.Claw:InRange(Target) and Target.Facing then
         -- Tiger's Fury
         if Setting("Tiger's Fury") and Spell.TigersFury:IsReady()
-            -- and TickTimeRemain > 0 and TickTimeRemain < 0.1 
+            -- and TickTimeRemain > 0 and TickTimeRemain < 0.1
             and not Buff.TigersFury:Exist(Player) and Power == 100
             and not Target.Player
             --and Spell.TigersFury:TimeSinceLastCast() > GCD
