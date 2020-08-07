@@ -61,18 +61,19 @@ local function Locals()
     then
         LastFormBuff = true
     end
-    if Player.Level >= 10 and Spell.BearForm:Known() then
+    if LastForm == nil and Player.Level >= 10 and Spell.BearForm:Known() then
         if not Spell.DireBearForm:Known() then LastForm = Spell.BearForm else LastForm = Spell.DireBearForm end
     end
-    if Player.Level >= 20 and Spell.CatForm:Known() then LastForm = Spell.CatForm end
+    if LastForm == nil and Player.Level >= 20 and Spell.CatForm:Known() then LastForm = Spell.CatForm end
     if LastHeal == nil then LastHeal = GetTime() end
     Opener = Setting("Cat Opener")
     TickTime = DMW.Player.TickTime or GetTime() + 0.05
     TickTimeRemain = TickTime - GetTime()
-    noShapeshiftPower = ((not Buff.CatForm:Exist(Player) or (Buff.CatForm:Exist(Player) and Power < 30))
-    and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < 10))) or not Player.Combat
+    noShapeshiftPower = ((not Buff.CatForm:Exist(Player) or (Buff.CatForm:Exist(Player) and Power < Setting("Energy")))
+    and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < Setting("Rage")))) or not Player.Combat
     NeedsHealing = (Setting("Regrowth") and HP <= Setting("Regrowth Percent"))
     or (Setting("Healing Touch") and HP <= Setting("Healing Touch Percent"))
+    or (Setting("Rejuvenation") and HP <= Setting("Rejuvenation Percent"))
     freeDPS = Setting("Omen of Clarity") ~= 4 and Setting("Omen of Clarity") ~= 2 and Buff.Clearcasting:Exist(Player)
     and (not NeedsHealing or Setting("Omen of Clarity") == 3)
     freeHeal = Setting("Omen of Clarity") ~= 4 and Setting("Omen of Clarity") ~= 3 and Buff.Clearcasting:Exist(Player)
@@ -336,7 +337,7 @@ local function Defensive()
         -- Abolish Poison
         if Setting("Abolish Poison") and Spell.AbolishPoison:IsReady()
             and Player:Dispel(Spell.AbolishPoison) and not Buff.AbolishPoison:Exist(Player)
-            and Mana >= ShapeshiftCost(Spell.AbolishPoison) and Player.Combat
+            and Mana >= ShapeshiftCost(Spell.AbolishPoison)
         then
             if CancelForm() then debug("Cancel Form [Abolish Poison]") return end
             if Spell.AbolishPoison:Cast(Player) then debug("Cast Abolish Poison") return true end
@@ -350,9 +351,9 @@ local function Defensive()
             if Spell.Barkskin:Cast(Player) then debug("Cast Barkskin") return true end
         end
         -- Cure Poison
-        if Setting("Cure Poison") and (Spell.CurePoison:IsReady() and not Spell.AbolishPoison:Known())
+        if Setting("Cure Poison")
+            and ((Spell.CurePoison:IsReady() and not Spell.AbolishPoison:Known()) or not Setting("Abolish Poison"))
             and Player:Dispel(Spell.CurePoison) and Mana >= ShapeshiftCost(Spell.CurePoison)
-            and not Player.Combat
         then
             if CancelForm() then debug("Cancel Form [Cure Poison]") return end
             if Spell.CurePoison:Cast(Player) then debug("Cast Cure Poison") return true end
@@ -378,7 +379,6 @@ local function Defensive()
         if Setting("Healing Touch") and IsReadyShapeshifted(Spell.HealingTouch)
             and (Mana >= ShapeshiftCost(Spell.HealingTouch) or freeHeal) and HP <= Setting("Healing Touch Percent")
             and noShapeshiftPower and not Spell.HealingTouch:LastCast() and (not Player.InGroup or Setting("Self Heal In Group"))
-            -- and (not CurrentSpell or CurrentSpell ~= Spell.Regrowth) and Spell.Regrowth:TimeSinceLastCast() > GCD * 2
             and not Player.HealPending and Player.LastHeal < GetTime() - 0.5
         then
             if CancelForm() then debug("Cancel Form [Healing Touch]") return end
@@ -389,7 +389,6 @@ local function Defensive()
             and not Buff.Regrowth:Exist(Player) and HP <= Setting("Regrowth Percent")
             and not Spell.Regrowth:LastCast() and (Mana >= ShapeshiftCost(Spell.Regrowth) or freeHeal)
             and noShapeshiftPower and not Spell.Regrowth:LastCast() and (not Player.InGroup or Setting("Self Heal In Group"))
-            -- and (not CurrentSpell or CurrentSpell ~= Spell.HealingTouch) and Spell.HealingTouch:TimeSinceLastCast() > GCD * 2
             and not Player.HealPending and Player.LastHeal < GetTime() - 0.5
         then
             if CancelForm() then debug("Cancel Form [Regrowth]") return end
@@ -398,8 +397,9 @@ local function Defensive()
         -- Rejuvenation
         if Setting("Rejuvenation") and IsReadyShapeshifted(Spell.Rejuvenation)
             and not Buff.Rejuvenation:Exist(Player) and HP <= Setting("Rejuvenation Percent")
-            and Mana >= ShapeshiftCost(Spell.Rejuvenation) and not Player.Combat
-            and not Buff.Clearcasting:Exist(Player) and (not Player.InGroup or Setting("Self Heal In Group"))
+            and not Spell.Rejuvenation:LastCast() and Mana >= ShapeshiftCost(Spell.Rejuvenation)
+            and not Buff.Clearcasting:Exist(Player) and noShapeshiftPower and not Spell.Rejuvenation:LastCast()
+            and (not Player.InGroup or Setting("Self Heal In Group"))
             and not Player.HealPending and Player.LastHeal < GetTime() - 0.5
         then
             if CancelForm() then debug("Cancel Form [Rejuvenation]") return end
@@ -446,7 +446,7 @@ end
 
 local function Bear()
     Player:AutoTarget(5, true)
-    if Target and Target.ValidEnemy then
+    if Target and Target.ValidEnemy and Target.Distance < 5 and Target.Facing then
         -- No Combat
         if not Player.Combat and not Target.Player then
             StartAttack()
@@ -459,21 +459,15 @@ local function Bear()
                 if Spell.Swipe:Cast(Unit5F) then debug("Cast Swipe [Pre-Combat]") return true end
             end
             -- Maul
-            if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3) and Target.Facing then
-                if Spell.Maul:Cast(Unit5F) then debug("Cast Maul [Pre-Combat]") return true end
+            if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3)
+                and Target.Facing and GCDRemain == 0 and not Player.MailActive
+            then
+                if Spell.Maul:Cast(Unit5F) then debug("Cast Maul [Pre-Combat]") Player.MaulActive = true return true end
             end
         end
         -- In Combat
         if Player.Combat then
             StartAttack()
-            -- -- Powershifting
-            -- if Talent.Furor.Rank == 5 and Power < 10
-            --     and Mana >= Spell.BearForm:Cost() and not Spell.BearForm:LastCast()
-            -- then
-            --     -- CancelShapeshiftForm()
-            --     RunMacroText("/cancelform\n/cast Bear Form")
-            --     -- if Spell.BearForm:Cast(Player) then debug("Cast Bear Form") return true end
-            -- end
             -- Enrage
             if Spell.Enrage:IsReady() and Player.Power < 10 and Unit5F.Distance < 8 and HP > 80 then
                 if Spell.Enrage:Cast(Player) then debug("Cast Enrage") return true end
@@ -485,12 +479,14 @@ local function Bear()
                 if Spell.DemoralizingRoar:Cast(Player) then debug("Cast Demoralizing Roar") return true end
             end
             -- Swipe
-            if Spell.Swipe:IsReady() and #Enemies5Y >= 3 and Target.Facing then
+            if Spell.Swipe:IsReady() and #Enemies5Y >= 3 then
                 if Spell.Swipe:Cast(Unit5F) then debug("Cast Swipe") return true end
             end
             -- Maul
-            if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3) and Target.Facing then
-                if Spell.Maul:Cast(Unit5F) then debug("Cast Maul") return true end
+            if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3)
+                and GCDRemain == 0 and not Player.MaulActive
+            then
+                if Spell.Maul:Cast(Unit5F) then debug("Cast Maul") Player.MaulActive = true return true end
             end
         end
     end
@@ -515,7 +511,7 @@ local function Caster()
             -- Moonfire (Shapeshift)
             if Spell.Moonfire:IsReady() and not Spell.FaerieFire:Known() and not Debuff.Moonfire:Exist(Target)
                 and Mana >= ShapeshiftCost(Spell.Moonfire.Ranks[Spell.Moonfire:HighestRank()])
-                and LastForm:IsReady() and Target.Distance >= 8
+                and LastForm and LastForm:IsReady() and Target.Distance >= 8
             then
                 if Spell.Moonfire:Cast(Target,1) then debug("Cast Moonfire [Pre-Combat - Shapeshift]") return true end
             end
@@ -571,10 +567,9 @@ local function Cat()
     if Target and Target.ValidEnemy and Spell.Claw:InRange(Target) and Target.Facing then
         -- Tiger's Fury
         if Setting("Tiger's Fury") and Spell.TigersFury:IsReady()
-            -- and TickTimeRemain > 0 and TickTimeRemain < 0.1
             and not Buff.TigersFury:Exist(Player) and Power == 100
             and not Target.Player
-            --and Spell.TigersFury:TimeSinceLastCast() > GCD
+            and Spell.TigersFury:TimeSinceLastCast() > GCD
         then
             if Spell.TigersFury:Cast(Player) then debug("Cast Tiger's Fury [Pre-Combat]") return end
         end
@@ -701,14 +696,14 @@ function Druid.Rotation()
             if CancelForm() then debug("Cancel Form [Last Form]") return end
             if LastForm:Cast(Player) then debug("Cast Last Form") return true end
         end
-        if not Shapeshifted then
-            if Caster() then return true end
-        end
         if Buff.BearForm:Exist(Player) or Buff.DireBearForm:Exist(Player) then
             if Bear() then return true end
         end
         if Buff.CatForm:Exist(Player) then
             if Cat() then return true end
+        end
+        if not Shapeshifted then
+            if Caster() then return true end
         end
     end
 end

@@ -16,6 +16,10 @@ function Druid.Settings()
     UI.AddHeader("Form Management")
         -- Auto-Shapeshifting
         UI.AddToggle("Auto-Shapeshifting", "Main Option for all Shapeshifting", 1, true)
+        -- Resource Hold
+        UI.AddLabel("Break Form When Below")
+        UI.AddRange("Energy","Cat Form Energy",1,100,1,30)
+        UI.AddRange("Rage","Bear Form Rage",1,100,1,10)
         -- Aquatic Form
         UI.AddToggle("Aquatic Form", "Enable/Disable Using Aquatic Form", 1)
         -- Travel Form
