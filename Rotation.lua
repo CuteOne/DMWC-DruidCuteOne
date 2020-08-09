@@ -38,7 +38,7 @@ local function Locals()
     Item = Player.Items
     Target = Player.Target or false
     GCD = Player:GCD()
-    GCDRemain = Player:GCDRemain() --Spell.Shred:CD()
+    GCDRemain = Player:GCDRemain()
     HUD = DMW.Settings.profile.HUD
     CDs = Player:CDs() and Target and Target.TTD > 5 and Target.Distance < 5
     Friends40Y, Friends40YC = Player:GetFriends(40)
@@ -48,7 +48,7 @@ local function Locals()
     Unit5F = Player:GetEnemy(5,true) or Target
     ComboPoints = GetComboPoints("player","target")
     Shapeshifted = Buff.DireBearForm:Exist(Player) or Buff.BearForm:Exist(Player) or Buff.CatForm:Exist(Player)
-    or Buff.MoonkinForm:Exist(Player) or Buff.TravelForm:Exist(Player) or Buff.AquaticForm:Exist(Player)
+        or Buff.MoonkinForm:Exist(Player) or Buff.TravelForm:Exist(Player) or Buff.AquaticForm:Exist(Player)
     Mana = UnitPower("player",0)
     Energy = UnitPower("player",3)
     if Buff.DireBearForm:Exist(Player) then LastForm = Spell.DireBearForm end
@@ -57,7 +57,7 @@ local function Locals()
     if Buff.MoonkinForm:Exist(Player) then LastForm = Spell.MoonkinForm end
     LastFormBuff = false
     if Buff.DireBearForm:Exist(Player) or Buff.BearForm:Exist(Player)
-    or Buff.CatForm:Exist(Player) or Buff.MoonkinForm:Exist(Player)
+        or Buff.CatForm:Exist(Player) or Buff.MoonkinForm:Exist(Player)
     then
         LastFormBuff = true
     end
@@ -70,21 +70,21 @@ local function Locals()
     TickTime = DMW.Player.TickTime or GetTime() + 0.05
     TickTimeRemain = TickTime - GetTime()
     noShapeshiftPower = ((not Buff.CatForm:Exist(Player) or (Buff.CatForm:Exist(Player) and Power < Setting("Energy")))
-    and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < Setting("Rage")))) or not Player.Combat
+        and (not Buff.BearForm:Exist(Player) or (Buff.BearForm:Exist(Player) and Power < Setting("Rage")))) or not Player.Combat
     NeedsHealing = (Setting("Regrowth") and HP <= Setting("Regrowth Percent"))
-    or (Setting("Healing Touch") and HP <= Setting("Healing Touch Percent"))
-    or (Setting("Rejuvenation") and HP <= Setting("Rejuvenation Percent"))
+        or (Setting("Healing Touch") and HP <= Setting("Healing Touch Percent"))
+        or (Setting("Rejuvenation") and HP <= Setting("Rejuvenation Percent"))
     freeDPS = Setting("Omen of Clarity") ~= 4 and Setting("Omen of Clarity") ~= 2 and Buff.Clearcasting:Exist(Player)
-    and (not NeedsHealing or Setting("Omen of Clarity") == 3)
+        and (not NeedsHealing or Setting("Omen of Clarity") == 3)
     freeHeal = Setting("Omen of Clarity") ~= 4 and Setting("Omen of Clarity") ~= 3 and Buff.Clearcasting:Exist(Player)
-    and (LastForm == nil or Mana >= LastForm:Cost())
+        and (LastForm == nil or Mana >= LastForm:Cost())
     Item.HealthPotion = Player:GetPotion("health")
     Item.ManaPotion = Player:GetPotion("mana")
     Item.RejuvPotion = Player:GetPotion("rejuv")
     LowestHealthOption = (Setting("Healing Touch") and Setting("Healing Touch Percent"))
-                            or (Setting("Regrowth") and Setting("Regrowth Percent"))
-                            or (Setting("Rejuvenation") and Setting("Rejuvenation Percent"))
-                            or 25
+        or (Setting("Regrowth") and Setting("Regrowth Percent"))
+        or (Setting("Rejuvenation") and Setting("Rejuvenation Percent"))
+        or 25
     CurrentSpell = Player:CurrentCast()
     if Target then Gender = GenderTable[UnitSex("target")] end
 end
@@ -144,7 +144,7 @@ local function Powershift()
         and TickTimeRemain > 0.25
     then
         for i=1, GetNumShapeshiftForms() do
-            _, name, active = GetShapeshiftFormInfo(i);
+            local _, name, active = GetShapeshiftFormInfo(i);
             if( name and active ) then
                 CancelShapeshiftForm()
                 debug("Cancel Form [Powershift]")
@@ -233,6 +233,15 @@ local function InAggroRange(offset)
         if Unit.Distance < threatRange
             and (UnitReaction("player",Unit.Pointer) < 4 or (Target and Target.ValidEnemy))
         then
+            return true
+        end
+    end
+    return false
+end
+
+local function MaulCheck()
+    for k, v in ipairs(Spell.Maul.Ranks) do
+        if IsCurrentSpell(v) then
             return true
         end
     end
@@ -460,7 +469,7 @@ local function Bear()
             end
             -- Maul
             if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3)
-                and Target.Facing and GCDRemain == 0 and not Player.MailActive
+                and Target.Facing and GCDRemain == 0 and not MaulCheck() and not Player.MailActive
             then
                 if Spell.Maul:Cast(Unit5F) then debug("Cast Maul [Pre-Combat]") Player.MaulActive = true return true end
             end
@@ -484,7 +493,7 @@ local function Bear()
             end
             -- Maul
             if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3)
-                and GCDRemain == 0 and not Player.MaulActive
+                and GCDRemain == 0 and not MaulCheck() and not Player.MaulActive
             then
                 if Spell.Maul:Cast(Unit5F) then debug("Cast Maul") Player.MaulActive = true return true end
             end
@@ -689,9 +698,8 @@ function Druid.Rotation()
         -- Last Form
         if Setting("Auto-Shapeshifting") and Setting("Last Form") and LastForm ~= nil
             and ((Player.Moving and Player.MovingTime > 2 and (not Spell.TravelForm:Known() or Player:IsInside() or not Setting("Travel Form")))
-            or ((Player.Combat or InAggroRange(5)) and ((Target and not Target.Friend) or not Target)))
+                or ((Player.Combat or InAggroRange(5)) and ((Target and not Target.Friend) or not Target)))
             and not LastFormBuff and (not (Buff.AquaticForm:Exist(Player) or Buff.TravelForm:Exist(Player)) or InAggroRange(5))
-                -- or #Enemies5Y > 0 or (Target and Target.Distance < 8))
         then
             if CancelForm() then debug("Cancel Form [Last Form]") return end
             if LastForm:Cast(Player) then debug("Cast Last Form") return true end
