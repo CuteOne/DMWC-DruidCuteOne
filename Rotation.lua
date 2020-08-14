@@ -469,7 +469,7 @@ local function Bear()
             end
             -- Maul
             if Spell.Maul:IsReady() and (not Spell.Swipe:Known() or #Enemies5Y < 3)
-                and Target.Facing and GCDRemain == 0 and not MaulCheck() and not Player.MailActive
+                and Target.Facing and GCDRemain == 0 and not MaulCheck() and not Player.MaulActive
             then
                 if Spell.Maul:Cast(Unit5F) then debug("Cast Maul [Pre-Combat]") Player.MaulActive = true return true end
             end
